@@ -1,0 +1,66 @@
+steps:
+  # 1. Build the backend image
+  - name: "gcr.io/cloud-builders/docker"
+    id: build-backend
+    args:
+      - build
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:$COMMIT_SHA
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:latest
+      - ./backend
+
+  # 2. Push backend image
+  - name: "gcr.io/cloud-builders/docker"
+    id: push-backend
+    waitFor: [build-backend]
+    args:
+      - push
+      - --all-tags
+      - us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend
+
+  # 3. Run DB migrations (one-off job in Cloud Run)
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    id: migrate
+    waitFor: [push-backend]
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - execute
+      - recruitment-migrate
+      - --region=us-central1
+      - --wait
+
+  # 4. Deploy API service
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    id: deploy-api
+    waitFor: [migrate]
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update
+      - recruitment-api
+      - --region=us-central1
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:$COMMIT_SHA
+
+  # 5. Deploy worker service
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    id: deploy-worker
+    waitFor: [migrate]
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update
+      - recruitment-worker
+      - --region=us-central1
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:$COMMIT_SHA
+
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:$COMMIT_SHA
+  - us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -1,0 +1,55 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: recruitment-worker
+  labels:
+    cloud.googleapis.com/location: us-central1
+spec:
+  template:
+    metadata:
+      annotations:
+        # Worker doesn't serve HTTP — keep one instance warm to drain the queue
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "3"
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      serviceAccountName: recruitment-api@PROJECT_ID.iam.gserviceaccount.com
+      containers:
+        - image: us-central1-docker.pkg.dev/PROJECT_ID/recruitment/backend:latest
+          command: ["arq", "app.worker.main.WorkerSettings"]
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: recruitment-database-url
+                  key: latest
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: recruitment-redis-url
+                  key: latest
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: recruitment-auth-secret
+                  key: latest
+            - name: INTERNAL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: recruitment-internal-api-key
+                  key: latest
+            - name: INITIAL_ADMIN_EMAIL
+              value: "YOUR_ADMIN_EMAIL@example.com"
+            - name: GCS_BUCKET
+              value: "recruitment-resumes-PROJECT_ID"
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: recruitment-gemini-api-key
+                  key: latest
+            - name: ENVIRONMENT
+              value: "production"

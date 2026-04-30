@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+out/
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Env files (never commit secrets)
+.env
+.env.local
+.env.development.local
+.env.production.local
+.env.*.local
+backend/.env
+frontend/.env.local
+
+# IDE / local agent
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Vercel
+.vercel/
+
+# Local data / caches
+*.rdb
+dump.rdb
+*.sqlite
+*.db
+postgres_data/
+redis_data/
+uploads/
+
+# Misc
+.cache/
+.turbo/

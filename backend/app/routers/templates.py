@@ -1,0 +1,221 @@
+"""Template CRUD — create/edit/delete/duplicate reusable hiring templates."""
+from __future__ import annotations
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlmodel import Session, select
+
+from app.db import get_session
+from app.models.template import Template, TemplateAssessmentQuestion, TemplateFormField
+from app.schemas.template import (
+    TemplateAssessmentQuestionOut,
+    TemplateCreate,
+    TemplateFormFieldOut,
+    TemplateOut,
+    TemplateSummary,
+    TemplateUpdate,
+)
+from app.security import require_admin
+
+router = APIRouter(prefix="/templates", tags=["templates"])
+
+
+def _get_or_404(session: Session, template_id: UUID) -> Template:
+    t = session.get(Template, template_id)
+    if t is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "template not found")
+    return t
+
+
+def _fetch_full(session: Session, template: Template) -> TemplateOut:
+    fields = session.exec(
+        select(TemplateFormField)
+        .where(TemplateFormField.template_id == template.id)
+        .order_by(TemplateFormField.sort_order)
+    ).all()
+    questions = session.exec(
+        select(TemplateAssessmentQuestion)
+        .where(TemplateAssessmentQuestion.template_id == template.id)
+        .order_by(TemplateAssessmentQuestion.sort_order)
+    ).all()
+    return TemplateOut(
+        id=template.id,
+        name=template.name,
+        description=template.description,
+        created_at=template.created_at,
+        updated_at=template.updated_at,
+        form_fields=[TemplateFormFieldOut.model_validate(f) for f in fields],
+        assessment_questions=[TemplateAssessmentQuestionOut.model_validate(q) for q in questions],
+    )
+
+
+def _replace_fields(
+    session: Session,
+    template: Template,
+    field_payloads,
+    question_payloads,
+) -> None:
+    """Delete existing child rows and replace with the supplied payloads."""
+    for existing in session.exec(
+        select(TemplateFormField).where(TemplateFormField.template_id == template.id)
+    ).all():
+        session.delete(existing)
+
+    for existing in session.exec(
+        select(TemplateAssessmentQuestion).where(
+            TemplateAssessmentQuestion.template_id == template.id
+        )
+    ).all():
+        session.delete(existing)
+
+    session.flush()
+
+    for i, f in enumerate(field_payloads):
+        session.add(
+            TemplateFormField(
+                template_id=template.id,
+                sort_order=i,
+                **f.model_dump(exclude={"sort_order"}),
+            )
+        )
+    for i, q in enumerate(question_payloads):
+        session.add(
+            TemplateAssessmentQuestion(
+                template_id=template.id,
+                sort_order=i,
+                **q.model_dump(exclude={"sort_order"}),
+            )
+        )
+
+
+@router.get("/", response_model=list[TemplateSummary])
+def list_templates(
+    session: Session = Depends(get_session),
+    _: object = Depends(require_admin),
+) -> list[TemplateSummary]:
+    templates = session.exec(select(Template).order_by(Template.name)).all()
+    return [TemplateSummary.model_validate(t) for t in templates]
+
+
+@router.post("/", response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
+def create_template(
+    payload: TemplateCreate,
+    session: Session = Depends(get_session),
+    _: object = Depends(require_admin),
+) -> TemplateOut:
+    template = Template(name=payload.name, description=payload.description)
+    session.add(template)
+    session.flush()
+
+    _replace_fields(session, template, payload.form_fields, payload.assessment_questions)
+    session.commit()
+    session.refresh(template)
+    return _fetch_full(session, template)
+
+
+@router.get("/{template_id}", response_model=TemplateOut)
+def get_template(
+    template_id: UUID,
+    session: Session = Depends(get_session),
+    _: object = Depends(require_admin),
+) -> TemplateOut:
+    return _fetch_full(session, _get_or_404(session, template_id))
+
+
+@router.put("/{template_id}", response_model=TemplateOut)
+def update_template(
+    template_id: UUID,
+    payload: TemplateUpdate,
+    session: Session = Depends(get_session),
+    _: object = Depends(require_admin),
+) -> TemplateOut:
+    template = _get_or_404(session, template_id)
+
+    if payload.name is not None:
+        template.name = payload.name
+    if payload.description is not None:
+        template.description = payload.description
+    session.add(template)
+
+    if payload.form_fields is not None or payload.assessment_questions is not None:
+        _replace_fields(
+            session,
+            template,
+            payload.form_fields or [],
+            payload.assessment_questions or [],
+        )
+
+    session.commit()
+    session.refresh(template)
+    return _fetch_full(session, template)
+
+
+@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_template(
+    template_id: UUID,
+    session: Session = Depends(get_session),
+    _: object = Depends(require_admin),
+) -> None:
+    template = _get_or_404(session, template_id)
+    for f in session.exec(
+        select(TemplateFormField).where(TemplateFormField.template_id == template_id)
+    ).all():
+        session.delete(f)
+    for q in session.exec(
+        select(TemplateAssessmentQuestion).where(
+            TemplateAssessmentQuestion.template_id == template_id
+        )
+    ).all():
+        session.delete(q)
+    session.delete(template)
+    session.commit()
+
+
+@router.post("/{template_id}/duplicate", response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
+def duplicate_template(
+    template_id: UUID,
+    session: Session = Depends(get_session),
+    _: object = Depends(require_admin),
+) -> TemplateOut:
+    src = _get_or_404(session, template_id)
+    src_fields = session.exec(
+        select(TemplateFormField)
+        .where(TemplateFormField.template_id == template_id)
+        .order_by(TemplateFormField.sort_order)
+    ).all()
+    src_questions = session.exec(
+        select(TemplateAssessmentQuestion)
+        .where(TemplateAssessmentQuestion.template_id == template_id)
+        .order_by(TemplateAssessmentQuestion.sort_order)
+    ).all()
+
+    copy = Template(name=f"{src.name} (copy)", description=src.description)
+    session.add(copy)
+    session.flush()
+
+    for f in src_fields:
+        session.add(
+            TemplateFormField(
+                template_id=copy.id,
+                label=f.label,
+                field_type=f.field_type,
+                is_required=f.is_required,
+                options=f.options,
+                sort_order=f.sort_order,
+            )
+        )
+    for q in src_questions:
+        session.add(
+            TemplateAssessmentQuestion(
+                template_id=copy.id,
+                question_text=q.question_text,
+                max_duration_seconds=q.max_duration_seconds,
+                max_attempts=q.max_attempts,
+                sort_order=q.sort_order,
+            )
+        )
+
+    session.commit()
+    session.refresh(copy)
+    return _fetch_full(session, copy)

@@ -1,0 +1,74 @@
+"""Server-to-server endpoint called by Auth.js after a successful sign-in.
+
+Handles the env-var bootstrap: the first user matching INITIAL_ADMIN_EMAIL
+is granted role=admin on first sign-in. Subsequent users are also created
+with role=admin in the MVP (single-role); a future invite flow can flip
+this to default to `reviewer` instead.
+"""
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from sqlmodel import Session, func, select
+
+from app.config import settings
+from app.db import get_session
+from app.models._base import Role
+from app.models.user import User
+from app.schemas.auth import UserOut, UserSyncRequest, UserSyncResponse
+from app.security import issue_session_token, require_internal_api_key
+
+router = APIRouter(
+    prefix="/internal/auth",
+    tags=["internal:auth"],
+    dependencies=[Depends(require_internal_api_key)],
+)
+
+
+@router.post("/sync", response_model=UserSyncResponse)
+def sync_user(
+    payload: UserSyncRequest,
+    session: Session = Depends(get_session),
+) -> UserSyncResponse:
+    user = session.exec(select(User).where(User.email == payload.email)).first()
+
+    if user is None:
+        is_first_user = session.exec(select(func.count()).select_from(User)).one() == 0
+        is_bootstrap_admin = payload.email.lower() == settings.initial_admin_email.lower()
+        # Grant admin only to the designated bootstrap admin or the very first
+        # user. Everyone else gets the least-privilege `reviewer` role so a
+        # stray Google sign-in cannot obtain admin capabilities.
+        role = Role.admin if (is_bootstrap_admin or is_first_user) else Role.reviewer
+
+        user = User(
+            email=payload.email,
+            name=payload.name,
+            image_url=payload.image_url,
+            role=role,
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+    else:
+        dirty = False
+        if payload.name and payload.name != user.name:
+            user.name = payload.name
+            dirty = True
+        if payload.image_url and payload.image_url != user.image_url:
+            user.image_url = payload.image_url
+            dirty = True
+        if dirty:
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+
+    token = issue_session_token(user_id=user.id, email=user.email, role=user.role.value)
+    return UserSyncResponse(
+        user=UserOut(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            image_url=user.image_url,
+            role=user.role,
+        ),
+        session_token=token,
+    )
