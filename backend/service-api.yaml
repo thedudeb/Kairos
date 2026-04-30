@@ -11,10 +11,11 @@ spec:
         run.googleapis.com/cpu-throttling: "true"
         autoscaling.knative.dev/minScale: "1"
         autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/cloudsql-instances: project-c2ab06fc-de81-45b1-8bd:us-central1:recruitment
     spec:
-      serviceAccountName: recruitment-api@PROJECT_ID.iam.gserviceaccount.com
+      serviceAccountName: recruitment-api@project-c2ab06fc-de81-45b1-8bd.iam.gserviceaccount.com
       containers:
-        - image: us-central1-docker.pkg.dev/PROJECT_ID/recruitment/backend:latest
+        - image: us-central1-docker.pkg.dev/project-c2ab06fc-de81-45b1-8bd/recruitment/backend:latest
           command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
           ports:
             - containerPort: 8080
@@ -44,9 +45,9 @@ spec:
                   name: recruitment-internal-api-key
                   key: latest
             - name: INITIAL_ADMIN_EMAIL
-              value: "YOUR_ADMIN_EMAIL@example.com"
+              value: "bkukner@gmail.com"
             - name: GCS_BUCKET
-              value: "recruitment-resumes-PROJECT_ID"
+              value: "recruitment-resumes-project-c2ab06fc-de81-45b1-8bd"
             - name: RESEND_API_KEY
               valueFrom:
                 secretKeyRef:

@@ -73,8 +73,8 @@ export default async function PublicJobPage({
 
         {/* Gradient orbs */}
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-20 left-1/2 h-[400px] w-[600px] -translate-x-1/2 rounded-full bg-indigo-600/20 blur-[100px]" />
-          <div className="absolute -bottom-10 right-0 h-[250px] w-[300px] rounded-full bg-violet-600/15 blur-[80px]" />
+          <div className="orb-primary absolute -top-20 left-1/2 h-[400px] w-[600px] -translate-x-1/2 rounded-full bg-indigo-600/20 blur-[100px]" />
+          <div className="orb-secondary absolute -bottom-10 right-0 h-[250px] w-[300px] rounded-full bg-violet-600/15 blur-[80px]" />
         </div>
 
         {/* Grid overlay */}
@@ -88,7 +88,7 @@ export default async function PublicJobPage({
         />
 
         {/* Nav */}
-        <div className="relative z-10 mx-auto flex h-14 max-w-3xl items-center justify-between px-6">
+        <div className="relative z-10 mx-auto flex h-14 max-w-3xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 shadow-md shadow-indigo-500/30">
               <svg width="14" height="14" viewBox="0 0 18 18" fill="none">
@@ -107,7 +107,7 @@ export default async function PublicJobPage({
         </div>
 
         {/* Hero */}
-        <div className="relative z-10 mx-auto max-w-3xl px-6 pb-12 pt-10">
+        <div className="relative z-10 mx-auto max-w-3xl px-4 pb-12 pt-10 sm:px-6">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-indigo-400">
             Open position
           </p>
@@ -124,7 +124,7 @@ export default async function PublicJobPage({
       </div>
 
       {/* Content */}
-      <main className="mx-auto max-w-3xl px-6 py-12">
+      <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-12">
 
         {/* Description */}
         {job.description_md && (
@@ -161,7 +161,7 @@ export default async function PublicJobPage({
 
 function JobDescription({ markdown }: { markdown: string }) {
   return (
-    <div className="prose prose-zinc max-w-none dark:prose-invert">
+    <div className="rounded-2xl border border-zinc-200 bg-white px-6 py-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:px-8">
       <MarkdownContent markdown={markdown} />
     </div>
   );
@@ -213,7 +213,7 @@ function ClosedJobPage() {
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#0a0a0f] px-6 text-center">
       {/* Gradient orbs */}
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-40 left-1/2 h-[400px] w-[400px] -translate-x-1/2 rounded-full bg-indigo-600/15 blur-[100px]" />
+        <div className="orb-primary absolute -top-40 left-1/2 h-[400px] w-[400px] -translate-x-1/2 rounded-full bg-indigo-600/15 blur-[100px]" />
       </div>
 
       {/* Logo */}

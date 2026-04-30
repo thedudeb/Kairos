@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { SignInButton } from "@/components/sign-in-button";
+import { DemoButton } from "@/components/demo-button";
 
 export default async function SignInPage({
   searchParams,
@@ -69,6 +70,14 @@ export default async function SignInPage({
           </div>
 
           <SignInButton callbackUrl={callbackUrl} />
+
+          <div className="my-4 flex items-center gap-3">
+            <div className="h-px flex-1 bg-white/10" />
+            <span className="text-xs text-zinc-600">or</span>
+            <div className="h-px flex-1 bg-white/10" />
+          </div>
+
+          <DemoButton callbackUrl={callbackUrl} />
 
           <p className="mt-6 text-center text-xs text-zinc-600">
             Access is restricted to authorised team members.

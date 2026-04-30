@@ -79,9 +79,9 @@ export function ParticleCanvas() {
           p.vy = (p.vy / speed) * BASE_SPEED * 3;
         }
 
-        // Gentle drift back to base speed
-        p.vx *= 0.99;
-        p.vy *= 0.99;
+        // Gentle random walk so particles never fully stop
+        p.vx += (Math.random() - 0.5) * 0.03;
+        p.vy += (Math.random() - 0.5) * 0.03;
 
         p.x += p.vx;
         p.y += p.vy;

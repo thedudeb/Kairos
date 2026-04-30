@@ -146,6 +146,7 @@ def seed_job(
     applicants_data: list[tuple],
     pending_parse_ratio: float = 0.15,
     admin: User | None = None,
+    status: JobStatus = JobStatus.active,
 ) -> None:
     # Skip if already seeded
     existing = session.exec(select(Job).where(Job.slug == slug)).first()
@@ -153,7 +154,7 @@ def seed_job(
         print(f"  ✓ {title} — already seeded, skipping")
         return
 
-    job = Job(title=title, slug=slug, description_md=description_md, status=JobStatus.active)
+    job = Job(title=title, slug=slug, description_md=description_md, status=status)
     session.add(job)
     session.flush()
 
@@ -321,6 +322,49 @@ QA_APPLICANTS = [
 ]
 
 
+# ─── Closed job data ──────────────────────────────────────────────────────────
+
+DEVREL_APPLICANTS = [
+    ("Priya",    "Kapoor",    "priya.kapoor@gmail.com",   "IIT Bombay",            "BTech Computer Science",   "Twilio",    "Developer Advocate",       "backend"),
+    ("Sam",      "Okonkwo",   "sam.okonkwo@gmail.com",    "University of Lagos",   "BSc Computer Science",     "Andela",    "DevRel Engineer",          "fullstack"),
+    ("Mia",      "Hofer",     "mia.hofer@gmail.com",      "ETH Zurich",            "MSc Computer Science",     "Stripe",    "Developer Advocate",       "backend"),
+    ("Leo",      "Brandt",    "leo.brandt@gmail.com",     "TU Berlin",             "BSc Computer Science",     "Contentful","DevRel Lead",              "fullstack"),
+    ("Kezia",    "Mensah",    "kezia.m@gmail.com",        "University of Ghana",   "BSc Information Systems",  "Paystack",  "Developer Experience Eng", "backend"),
+    ("Tomás",    "Herrero",   "tomas.h@gmail.com",        "Universidad Autónoma",  "BSc Comp. Engineering",    "Telefónica","API Advocate",             "fullstack"),
+    ("Yuna",     "Park",      "yuna.park@gmail.com",      "KAIST",                 "MSc Computer Science",     "Kakao",     "Developer Advocate",       "mobile"),
+    ("Eli",      "Shapiro",   "eli.shapiro@gmail.com",    "Hebrew University",     "BSc Software Engineering", "Cloudinary","DevRel Engineer",          "backend"),
+]
+
+DATA_ENGINEER_APPLICANTS = [
+    ("Arash",    "Tehrani",   "arash.t@gmail.com",        "Sharif University",     "BSc Computer Engineering", "Digikala",  "Data Engineer",            "data"),
+    ("Fatou",    "Diallo",    "fatou.d@gmail.com",        "Cheikh Anta Diop",      "BSc Mathematics",          "Orange",    "Analytics Engineer",       "data"),
+    ("Viktor",   "Serov",     "viktor.s@gmail.com",       "Moscow State University","MSc Applied Math",         "Yandex",    "Data Platform Engineer",   "data"),
+    ("Lena",     "Hoffmann",  "lena.h@gmail.com",         "LMU Munich",            "MSc Statistics",           "Siemens",   "Data Engineer",            "data"),
+    ("Diego",    "Fuentes",   "diego.f@gmail.com",        "UNAM Mexico",           "BSc Computer Science",     "Rappi",     "Data Pipeline Engineer",   "data"),
+    ("Camille",  "Leroy",     "camille.l@gmail.com",      "Polytechnique Paris",   "MSc Data Science",         "BlaBlaCar", "Analytics Engineer",       "data"),
+    ("Jin",      "Wei",       "jin.wei@gmail.com",        "Peking University",     "MSc Computer Science",     "ByteDance", "Data Engineer",            "data"),
+    ("Blessing", "Okafor",    "blessing.o@gmail.com",     "University of Ibadan",  "BSc Statistics",           "Flutterwave","Data Analyst",            "data"),
+    ("Håkon",    "Berg",      "hakon.b@gmail.com",        "NTNU Trondheim",        "MSc Data Science",         "Equinor",   "Data Platform Engineer",   "data"),
+    ("Anika",    "Roy",       "anika.r@gmail.com",        "IIT Delhi",             "BTech Computer Science",   "Meesho",    "Analytics Engineer",       "data"),
+]
+
+DEVOPS_APPLICANTS = [
+    ("Karim",    "Mansouri",  "karim.m@gmail.com",        "University of Tehran",  "BSc Software Engineering", "Digikala",  "DevOps Engineer",          "devops"),
+    ("Saoirse",  "Murphy",    "saoirse.m@gmail.com",      "University College Cork","BSc Computer Science",     "Workday",   "Platform Engineer",        "devops"),
+    ("Pavel",    "Horak",     "pavel.h@gmail.com",        "Czech Technical Univ",  "MSc Computer Science",     "JetBrains", "Site Reliability Engineer", "devops"),
+    ("Amani",    "Njoroge",   "amani.n@gmail.com",        "University of Nairobi", "BSc Computer Engineering", "Safaricom", "Cloud Engineer",           "devops"),
+    ("Mikko",    "Virtanen",  "mikko.v@gmail.com",        "Aalto University",      "MSc Computer Science",     "Nokia",     "DevOps Engineer",          "devops"),
+    ("Roxana",   "Ionescu",   "roxana.i@gmail.com",       "Bucharest Polytechnic", "BSc Computer Science",     "UiPath",    "Platform Engineer",        "devops"),
+]
+
+CLOSED_SWE_STAGES = [
+    ("Applied",   0, False),
+    ("Screening", 1, False),
+    ("Interview", 2, False),
+    ("Hired",     3, True),
+    ("Rejected",  4, True),
+]
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def seed() -> None:
@@ -419,8 +463,77 @@ We're looking for a QA Analyst to help us ship software with confidence. You'll 
             admin=admin,
         )
 
-    total = len(SWE_APPLICANTS) + len(DESIGNER_APPLICANTS) + len(QA_APPLICANTS)
-    print(f"\n✓ Seeded {total} applicants across 3 jobs")
+        seed_job(
+            session,
+            title="Developer Advocate",
+            slug="developer-advocate-demo",
+            description_md="""## About the role
+
+We hired for this role in Q1. The position is now filled.
+
+## What we looked for
+
+- Technical depth with a love for teaching
+- Strong public speaking and writing skills
+- Experience building demo apps and tutorials
+""",
+            stages_spec=CLOSED_SWE_STAGES,
+            form_fields=[
+                ("Link to a talk or blog post you're proud of", "url", True),
+            ],
+            applicants_data=DEVREL_APPLICANTS,
+            status=JobStatus.closed,
+            admin=admin,
+        )
+
+        seed_job(
+            session,
+            title="Data Engineer",
+            slug="data-engineer-demo",
+            description_md="""## About the role
+
+This position has been filled. Thank you to everyone who applied.
+
+## What we looked for
+
+- Strong SQL and Python skills
+- Experience with Spark, dbt, or Airflow
+- Comfort with cloud data warehouses (Snowflake, BigQuery)
+""",
+            stages_spec=CLOSED_SWE_STAGES,
+            form_fields=[
+                ("Favourite data stack", "text", False),
+            ],
+            applicants_data=DATA_ENGINEER_APPLICANTS,
+            status=JobStatus.closed,
+            admin=admin,
+        )
+
+        seed_job(
+            session,
+            title="DevOps / Platform Engineer",
+            slug="devops-platform-demo",
+            description_md="""## About the role
+
+Hiring for this role is complete. We appreciate your interest.
+
+## What we looked for
+
+- Kubernetes, Terraform, and CI/CD expertise
+- Cloud experience (AWS or GCP preferred)
+- Strong observability and on-call experience
+""",
+            stages_spec=CLOSED_SWE_STAGES,
+            form_fields=[
+                ("Primary cloud provider", "dropdown", False),
+            ],
+            applicants_data=DEVOPS_APPLICANTS,
+            status=JobStatus.closed,
+            admin=admin,
+        )
+
+    total = len(SWE_APPLICANTS) + len(DESIGNER_APPLICANTS) + len(QA_APPLICANTS) + len(DEVREL_APPLICANTS) + len(DATA_ENGINEER_APPLICANTS) + len(DEVOPS_APPLICANTS)
+    print(f"\n✓ Seeded {total} applicants across 6 jobs (3 active, 3 closed)")
     print("\nOpen the demo at:")
     print("  Admin:  http://localhost:3000/admin")
     print("  Portal: http://localhost:3000/careers/senior-software-engineer-demo")

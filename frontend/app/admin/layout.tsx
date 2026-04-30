@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { SignOutButton } from "@/components/sign-out-button";
-import { KeyboardShortcuts } from "@/components/admin/keyboard-shortcuts";
-import { ShortcutsButton } from "@/components/admin/shortcuts-button";
+import { HelpButton } from "@/components/admin/help-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default async function AdminLayout({
   children,
@@ -40,12 +40,12 @@ export default async function AdminLayout({
                 </span>
               </span>
             )}
-            <ShortcutsButton />
+            <ThemeToggle />
+            <HelpButton />
             <SignOutButton />
           </div>
         </div>
       </header>
-      <KeyboardShortcuts />
       <main className="flex-1">{children}</main>
     </div>
   );

@@ -55,6 +55,14 @@ export function ApplicationForm({ slug, customFields }: ApplicationFormProps) {
     }
   }
 
+  function handleFormChange() {
+    // Clear server-side errors when the user edits the form after a failed attempt.
+    if (state === "error") {
+      setState("idle");
+      setErrorMessage(null);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!formRef.current) return;
@@ -97,7 +105,7 @@ export function ApplicationForm({ slug, customFields }: ApplicationFormProps) {
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="space-y-5" noValidate>
+    <form ref={formRef} onSubmit={handleSubmit} onChange={handleFormChange} className="space-y-5" noValidate>
       {/* Default fields */}
       <div className="grid gap-5 sm:grid-cols-2">
         <Field label="First name" required>
@@ -189,7 +197,7 @@ export function ApplicationForm({ slug, customFields }: ApplicationFormProps) {
       <div className="pt-2">
         <button
           type="submit"
-          disabled={isPending || !!errorMessage}
+          disabled={isPending}
           className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 sm:w-auto"
         >
           {isPending ? (

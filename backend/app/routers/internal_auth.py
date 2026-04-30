@@ -34,10 +34,8 @@ def sync_user(
     if user is None:
         is_first_user = session.exec(select(func.count()).select_from(User)).one() == 0
         is_bootstrap_admin = payload.email.lower() == settings.initial_admin_email.lower()
-        # Grant admin only to the designated bootstrap admin or the very first
-        # user. Everyone else gets the least-privilege `reviewer` role so a
-        # stray Google sign-in cannot obtain admin capabilities.
-        role = Role.admin if (is_bootstrap_admin or is_first_user) else Role.reviewer
+        is_demo = payload.email.lower() == "demo@kairos.app"
+        role = Role.admin if (is_bootstrap_admin or is_first_user or is_demo) else Role.reviewer
 
         user = User(
             email=payload.email,

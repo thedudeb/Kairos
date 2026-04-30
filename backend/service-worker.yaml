@@ -12,11 +12,25 @@ spec:
         autoscaling.knative.dev/minScale: "1"
         autoscaling.knative.dev/maxScale: "3"
         run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/cloudsql-instances: project-c2ab06fc-de81-45b1-8bd:us-central1:recruitment
     spec:
-      serviceAccountName: recruitment-api@PROJECT_ID.iam.gserviceaccount.com
+      serviceAccountName: recruitment-api@project-c2ab06fc-de81-45b1-8bd.iam.gserviceaccount.com
       containers:
-        - image: us-central1-docker.pkg.dev/PROJECT_ID/recruitment/backend:latest
-          command: ["arq", "app.worker.main.WorkerSettings"]
+        - image: us-central1-docker.pkg.dev/project-c2ab06fc-de81-45b1-8bd/recruitment/backend:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              arq app.worker.WorkerSettings &
+              python3 -c "
+              import http.server, os, threading
+              class H(http.server.BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'ok')
+                  def log_message(self, *a): pass
+              http.server.HTTPServer(('', int(os.environ.get('PORT', 8080))), H).serve_forever()
+              "
           resources:
             limits:
               cpu: "2"
@@ -43,9 +57,9 @@ spec:
                   name: recruitment-internal-api-key
                   key: latest
             - name: INITIAL_ADMIN_EMAIL
-              value: "YOUR_ADMIN_EMAIL@example.com"
+              value: "bkukner@gmail.com"
             - name: GCS_BUCKET
-              value: "recruitment-resumes-PROJECT_ID"
+              value: "recruitment-resumes-project-c2ab06fc-de81-45b1-8bd"
             - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:

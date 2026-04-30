@@ -188,8 +188,8 @@ Fill in after deployment so reviewers can test your hosted build:
 
 | Surface | URL |
 |---------|-----|
-| Frontend (admin dashboard + careers portal) | `https://YOUR_FRONTEND.vercel.app` |
-| Backend API (Swagger at `/docs`) | `https://YOUR_CLOUD_RUN_URL` |
+| Frontend (admin dashboard + careers portal) | `https://frontend-thedude-da236722.vercel.app` |
+| Backend API (Swagger at `/docs`) | `https://recruitment-api-189067700467.us-central1.run.app` |
 
 Important paths:
 

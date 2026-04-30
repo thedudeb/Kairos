@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { backendFetch, BackendError } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { CollapsibleSection } from "@/components/admin/collapsible-section";
 import type { JobListItem, JobStatus } from "@/types/api";
 
 const STATUS_ORDER: JobStatus[] = ["active", "draft", "closed"];
@@ -16,7 +17,7 @@ const STATUS_BADGE: Record<JobStatus, string> = {
   draft:
     "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
   closed:
-    "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400",
+    "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400",
 };
 
 function isLikelyNetworkFailure(message: string): boolean {
@@ -124,24 +125,42 @@ export default async function AdminLandingPage() {
           {STATUS_ORDER.map((status) => {
             const list = grouped[status];
             if (list.length === 0) return null;
+
+            const header = (
+              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
+                    STATUS_BADGE[status],
+                  )}
+                >
+                  {STATUS_LABEL[status]}
+                </span>
+                <span className="text-zinc-400">({list.length})</span>
+              </h2>
+            );
+
+            const cards = (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {list.map((job) => (
+                  <JobCard key={job.id} job={job} />
+                ))}
+              </div>
+            );
+
+            if (status === "closed") {
+              return (
+                <CollapsibleSection key={status} header={header} defaultOpen={false}>
+                  {cards}
+                </CollapsibleSection>
+              );
+            }
+
             return (
               <section key={status}>
-                <h2 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                  <span
-                    className={cn(
-                      "inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
-                      STATUS_BADGE[status],
-                    )}
-                  >
-                    {STATUS_LABEL[status]}
-                  </span>
-                  <span className="text-zinc-400">({list.length})</span>
-                </h2>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {list.map((job) => (
-                    <JobCard key={job.id} job={job} />
-                  ))}
-                </div>
+                {header}
+                <div className="mb-4" />
+                {cards}
               </section>
             );
           })}

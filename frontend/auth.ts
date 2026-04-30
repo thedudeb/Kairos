@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY ?? "";
@@ -29,13 +30,32 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
     }),
+    Credentials({
+      name: "Demo",
+      credentials: {},
+      async authorize() {
+        const data = await syncWithBackend("demo@kairos.app", "Demo User", null);
+        if (!data) return null;
+        return {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name ?? "Demo User",
+          backendId: data.user.id,
+          role: data.user.role,
+          backendToken: data.session_token,
+        };
+      },
+    }),
   ],
   session: { strategy: "jwt" },
   pages: {
     signIn: "/sign-in",
   },
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, account }) {
+      // Credentials (demo) provider already synced in authorize().
+      if (account?.provider === "credentials") return true;
+
       if (!user.email) return false;
 
       if (!INTERNAL_API_KEY) {
