@@ -107,9 +107,31 @@ cd backend && uv run arq app.worker.WorkerSettings
 cd frontend && pnpm dev
 ```
 
+### GitHub Codespaces / clean machine
+
+In Codespaces the bootstrap runs automatically on container start. On any other clean machine:
+
+```bash
+docker compose up -d                  # Postgres + Redis
+bash scripts/codespaces-bootstrap.sh  # generates matching .env files,
+                                      # runs migrations, seeds demo data
+```
+
+The script is idempotent — re-runs are safe and skip the seed when data exists. It auto-generates matching `AUTH_SECRET` + `INTERNAL_API_KEY` in both env files (this is a common gotcha when setting up by hand).
+
+Optional services degrade gracefully when their keys are missing:
+- `GEMINI_API_KEY` — resume parsing + AI fit-score
+- `RESEND_API_KEY` — confirmation emails
+- `GCS_BUCKET` — file storage (falls back to local `/tmp`)
+- `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` — Google sign-in (the demo button works without it)
+
+Then start the three processes from the “Running” section.
+
+Interactive API reference: **`http://localhost:8000/docs`** (OpenAPI/Swagger). A concise list of staff-only HTTP routes (users, invites, job description modes, file field types) is in [`docs/API.md`](docs/API.md).
+
 Visit **http://localhost:3000** — sign in with Google, and the demo job will be there with 30 seeded applicants.
 
-API docs (Swagger): **http://localhost:8000/docs**
+API docs (Swagger): **http://localhost:8000/docs** — see also [`docs/API.md`](docs/API.md).
 
 ## Repo layout
 

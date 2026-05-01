@@ -114,6 +114,14 @@ hides worker health from Cloud Run's own probes.
   blob from the LLM plus normalized columns (top institution, top degree) that the
   filter/sort/group queries hit directly. Detail rows for education/work/skills are
   separate child tables for proper filtering.
+- **Job description modes.** Each job stores `description_kind`: either **`markdown`**
+  (full in-portal body in `description_md`) or **`external`**, where the canonical
+  JD lives at an HTTPS `description_external_url` and the public page surfaces a
+  prominent outbound link (with optional short `description_summary` for context).
+- **Per-field file allowlists.** Custom `file` form fields may declare
+  `file_allowed_types` (MIME strings such as `application/pdf`). When omitted, the
+  server falls back to the global safe allowlist; public apply validates each
+  uploaded file against its field’s declaration.
 
 ## Webhook idempotency
 

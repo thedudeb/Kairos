@@ -14,8 +14,8 @@
     "5432": { "label": "Postgres" },
     "6379": { "label": "Redis" }
   },
-  "postCreateCommand": "npm install -g pnpm@10 && cd frontend && pnpm install && cd ../backend && uv sync",
-  "postStartCommand": "docker compose up -d",
+  "postCreateCommand": "npm install -g pnpm@10 && (cd frontend && pnpm install) && (cd backend && uv sync)",
+  "postStartCommand": "docker compose up -d && bash scripts/codespaces-bootstrap.sh",
   "customizations": {
     "vscode": {
       "extensions": [
