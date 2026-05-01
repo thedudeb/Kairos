@@ -10,6 +10,7 @@ interface NotesSectionProps {
   jobId: string;
   applicantId: string;
   existingNotes: NoteOut[];
+  readOnly?: boolean;
 }
 
 function formatDate(iso: string) {
@@ -25,10 +26,12 @@ function NoteItem({
   note,
   jobId,
   applicantId,
+  readOnly = false,
 }: {
   note: NoteOut;
   jobId: string;
   applicantId: string;
+  readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(note.body);
@@ -54,7 +57,7 @@ function NoteItem({
     });
   }
 
-  if (editing) {
+  if (editing && !readOnly) {
     return (
       <div className="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-800">
         <textarea
@@ -75,7 +78,10 @@ function NoteItem({
             Save
           </button>
           <button
-            onClick={() => { setEditing(false); setEditBody(note.body); }}
+            onClick={() => {
+              setEditing(false);
+              setEditBody(note.body);
+            }}
             className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-600"
           >
             <X className="h-3 w-3" /> Cancel
@@ -92,29 +98,40 @@ function NoteItem({
         <p className="text-xs text-zinc-400">
           <span className="font-medium">{note.author_name}</span> · {formatDate(note.created_at)}
         </p>
-        <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-          <button
-            onClick={() => setEditing(true)}
-            className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-            title="Edit note"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={isPending}
-            className="text-zinc-400 hover:text-red-500 disabled:opacity-40"
-            title="Delete note"
-          >
-            {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-          </button>
-        </div>
+        {!readOnly && (
+          <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              onClick={() => setEditing(true)}
+              className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+              title="Edit note"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={isPending}
+              className="text-zinc-400 hover:text-red-500 disabled:opacity-40"
+              title="Delete note"
+            >
+              {isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-export function NotesSection({ jobId, applicantId, existingNotes }: NotesSectionProps) {
+export function NotesSection({
+  jobId,
+  applicantId,
+  existingNotes,
+  readOnly = false,
+}: NotesSectionProps) {
   const [body, setBody] = useState("");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -142,30 +159,42 @@ export function NotesSection({ jobId, applicantId, existingNotes }: NotesSection
       {existingNotes.length > 0 && (
         <div className="space-y-3">
           {existingNotes.map((note) => (
-            <NoteItem key={note.id} note={note} jobId={jobId} applicantId={applicantId} />
+            <NoteItem
+              key={note.id}
+              note={note}
+              jobId={jobId}
+              applicantId={applicantId}
+              readOnly={readOnly}
+            />
           ))}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-2">
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Add a note…"
-          rows={3}
-          disabled={isPending}
-          className="block w-full resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-        />
-        {error && <p className="text-xs text-red-500">{error}</p>}
-        <button
-          type="submit"
-          disabled={!body.trim() || isPending}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-          Save note
-        </button>
-      </form>
+      {!readOnly && (
+        <form onSubmit={handleSubmit} className="space-y-2">
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Add a note…"
+            rows={3}
+            disabled={isPending}
+            className="block w-full resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          />
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <button
+            type="submit"
+            disabled={!body.trim() || isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            {isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Send className="h-3.5 w-3.5" />
+            )}
+            Save note
+          </button>
+        </form>
+      )}
     </div>
   );
 }

@@ -28,7 +28,13 @@ const DEFAULT_QUESTIONS: AssessmentQuestionItem[] = Array.from(
   }),
 );
 
-export function TemplateEditor({ template }: { template?: TemplateOut }) {
+export function TemplateEditor({
+  template,
+  readOnly = false,
+}: {
+  template?: TemplateOut;
+  readOnly?: boolean;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -51,6 +57,7 @@ export function TemplateEditor({ template }: { template?: TemplateOut }) {
   }
 
   function handleSave() {
+    if (readOnly) return;
     if (!name.trim()) {
       notify(false, "Template name is required.");
       return;
@@ -98,7 +105,11 @@ export function TemplateEditor({ template }: { template?: TemplateOut }) {
             ← Templates
           </Link>
           <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-            {template ? "Edit template" : "New template"}
+            {readOnly
+              ? "View template"
+              : template
+                ? "Edit template"
+                : "New template"}
           </h1>
         </div>
         {template ? (
@@ -133,6 +144,7 @@ export function TemplateEditor({ template }: { template?: TemplateOut }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Software Engineer"
+            readOnly={readOnly}
             className={inputBase}
           />
         </div>
@@ -145,6 +157,7 @@ export function TemplateEditor({ template }: { template?: TemplateOut }) {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="What is this template for?"
+            readOnly={readOnly}
             className={inputBase}
           />
         </div>
@@ -170,7 +183,11 @@ export function TemplateEditor({ template }: { template?: TemplateOut }) {
 
       {/* Form fields */}
       {activeTab === "fields" && (
-        <FormBuilder initialFields={template?.form_fields ?? []} onChange={setFields} />
+        <FormBuilder
+          initialFields={template?.form_fields ?? []}
+          onChange={setFields}
+          readOnly={readOnly}
+        />
       )}
 
       {/* Assessment questions */}
@@ -178,6 +195,7 @@ export function TemplateEditor({ template }: { template?: TemplateOut }) {
         <AssessmentQuestionsEditor
           initialQuestions={template?.assessment_questions ?? DEFAULT_QUESTIONS}
           onChange={setQuestions}
+          readOnly={readOnly}
         />
       )}
 
@@ -205,20 +223,26 @@ export function TemplateEditor({ template }: { template?: TemplateOut }) {
         </div>
       )}
 
-      {/* Save */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={isPending || !name.trim()}
-          className="rounded-md bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          {isPending ? "Saving…" : template ? "Save changes" : "Create template"}
-        </button>
-        <Link href="/admin/templates" className="text-sm text-zinc-500 hover:text-zinc-700">
-          Cancel
-        </Link>
-      </div>
+      {!readOnly && (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isPending || !name.trim()}
+            className="rounded-md bg-zinc-900 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          >
+            {isPending ? "Saving…" : template ? "Save changes" : "Create template"}
+          </button>
+          <Link href="/admin/templates" className="text-sm text-zinc-500 hover:text-zinc-700">
+            Cancel
+          </Link>
+        </div>
+      )}
+      {readOnly && (
+        <p className="text-sm text-zinc-500">
+          View-only — contact an admin to edit this template.
+        </p>
+      )}
     </div>
   );
 }

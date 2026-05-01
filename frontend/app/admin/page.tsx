@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
+import { auth } from "@/auth";
 import { backendFetch, BackendError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { CollapsibleSection } from "@/components/admin/collapsible-section";
@@ -32,6 +33,9 @@ function isLikelyNetworkFailure(message: string): boolean {
 }
 
 export default async function AdminLandingPage() {
+  const session = await auth();
+  const isAdmin = session?.user?.role === "admin";
+
   let jobs: JobListItem[] = [];
   let error: string | null = null;
 
@@ -108,18 +112,20 @@ export default async function AdminLandingPage() {
           >
             Templates
           </Link>
-          <Link
-            href="/admin/jobs/new"
-            className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-          >
-            <Plus className="h-4 w-4" />
-            New job
-          </Link>
+          {isAdmin && (
+            <Link
+              href="/admin/jobs/new"
+              className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              <Plus className="h-4 w-4" />
+              New job
+            </Link>
+          )}
         </div>
       </div>
 
       {jobs.length === 0 ? (
-        <EmptyState />
+        <EmptyState isAdmin={isAdmin} />
       ) : (
         <div className="space-y-10">
           {STATUS_ORDER.map((status) => {
@@ -237,20 +243,22 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function EmptyState() {
+function EmptyState({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-200 py-24 text-center dark:border-zinc-800">
       <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">No jobs yet</p>
       <p className="mt-1 text-sm text-zinc-500">
         Create your first job listing to get started.
       </p>
-      <Link
-        href="/admin/jobs/new"
-        className="mt-6 inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
-      >
-        <Plus className="h-4 w-4" />
-        New job
-      </Link>
+      {isAdmin && (
+        <Link
+          href="/admin/jobs/new"
+          className="mt-6 inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          <Plus className="h-4 w-4" />
+          New job
+        </Link>
+      )}
     </div>
   );
 }

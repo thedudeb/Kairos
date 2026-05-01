@@ -61,6 +61,7 @@ interface KanbanBoardProps {
   jobId: string;
   stages: Stage[];
   initialByStage: Record<string, ApplicantListItem[]>;
+  readOnly?: boolean;
 }
 
 async function apiStages(jobId: string, method: string, path: string, body?: object) {
@@ -73,7 +74,7 @@ async function apiStages(jobId: string, method: string, path: string, body?: obj
   return res.ok ? res.json() : null;
 }
 
-export function KanbanBoard({ jobId, stages: initialStages, initialByStage }: KanbanBoardProps) {
+export function KanbanBoard({ jobId, stages: initialStages, initialByStage, readOnly = false }: KanbanBoardProps) {
   const [stages, setStages] = useState(
     [...initialStages].sort((a, b) => a.sort_order - b.sort_order),
   );
@@ -84,7 +85,7 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage }: Ka
   const router = useRouter();
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: readOnly ? 10_000 : 6 } }),
   );
 
   function findApplicant(id: string): ApplicantListItem | null {
@@ -119,6 +120,7 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage }: Ka
   }
 
   function handleDragOver(event: DragOverEvent) {
+    if (readOnly) return;
     const { active, over } = event;
     if (!over) return;
     const activeId = active.id as string;
@@ -140,6 +142,7 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage }: Ka
   }
 
   function handleDragEnd(event: DragEndEvent) {
+    if (readOnly) return;
     const { active, over } = event;
     setActiveCard(null);
     setActiveColumn(null);
@@ -215,6 +218,7 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage }: Ka
               onRename={handleRenameStage}
               onDelete={handleDeleteStage}
               canDelete={stages.length > 1 && (byStage[stage.id]?.length ?? 0) === 0}
+              readOnly={readOnly}
             />
           ))}
         </div>
@@ -244,6 +248,7 @@ function KanbanColumn({
   onRename,
   onDelete,
   canDelete,
+  readOnly = false,
 }: {
   stage: Stage;
   cards: ApplicantListItem[];
@@ -251,6 +256,7 @@ function KanbanColumn({
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
   canDelete: boolean;
+  readOnly?: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(stage.name);
@@ -324,10 +330,15 @@ function KanbanColumn({
       <div className="group mb-3 flex items-center gap-1.5">
         {/* Drag handle — triggers column reorder */}
         <button
+          type="button"
           {...attributes}
-          {...listeners}
-          className="cursor-grab text-zinc-300 hover:text-zinc-500 active:cursor-grabbing dark:text-zinc-600 dark:hover:text-zinc-400"
-          title="Drag to reorder"
+          {...(readOnly ? {} : listeners)}
+          className={cn(
+            "text-zinc-300 hover:text-zinc-500 dark:text-zinc-600 dark:hover:text-zinc-400",
+            readOnly ? "cursor-default opacity-40" : "cursor-grab active:cursor-grabbing",
+          )}
+          title={readOnly ? "" : "Drag to reorder"}
+          disabled={readOnly}
         >
           <GripVertical className="h-4 w-4" />
         </button>
@@ -361,7 +372,7 @@ function KanbanColumn({
                 terminal
               </span>
             )}
-            {/* Hover actions */}
+            {!readOnly && (
             <span className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
               <button
                 onClick={startEdit}
@@ -388,6 +399,7 @@ function KanbanColumn({
                 <Trash2 className="h-3 w-3" />
               </button>
             </span>
+            )}
             <span className="ml-1 text-sm font-medium text-zinc-400">{cards.length}</span>
           </>
         )}
@@ -404,11 +416,11 @@ function KanbanColumn({
         )}
       >
         {cards.map((applicant) => (
-          <ApplicantCard key={applicant.id} applicant={applicant} jobId={jobId} />
+          <ApplicantCard key={applicant.id} applicant={applicant} jobId={jobId} readOnly={readOnly} />
         ))}
         {cards.length === 0 && (
           <div className="flex flex-1 items-center justify-center py-8 text-xs text-zinc-400">
-            Drop here
+            {readOnly ? "No applicants" : "Drop here"}
           </div>
         )}
       </div>
@@ -442,13 +454,18 @@ function ApplicantCard({
   applicant,
   jobId,
   isOverlay,
+  readOnly = false,
 }: {
   applicant: ApplicantListItem;
   jobId: string;
   isOverlay?: boolean;
+  readOnly?: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging: dragging } =
-    useDraggable({ id: applicant.id, data: { type: "card" } });
+  const { attributes, listeners, setNodeRef, isDragging: dragging } = useDraggable({
+    id: applicant.id,
+    data: { type: "card" },
+    disabled: readOnly,
+  });
 
   return (
     <div
@@ -461,7 +478,7 @@ function ApplicantCard({
       )}
     >
       <div className="mb-2 flex items-start gap-2.5">
-        {/* Drag handle — only this element activates pointer capture */}
+        {!readOnly ? (
         <button
           {...listeners}
           className={cn(
@@ -473,6 +490,9 @@ function ApplicantCard({
         >
           <GripHorizontal className="h-3.5 w-3.5" />
         </button>
+        ) : (
+          <span className="mt-0.5 w-3.5 shrink-0" aria-hidden />
+        )}
         <ApplicantAvatar
           firstName={applicant.first_name}
           lastName={applicant.last_name}

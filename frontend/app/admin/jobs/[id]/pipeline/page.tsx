@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/auth";
 import { backendFetch } from "@/lib/api";
 import type { ApplicantListItem } from "@/types/api";
 import { PipelineShell } from "./pipeline-shell";
@@ -37,6 +38,9 @@ export default async function PipelinePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const session = await auth();
+  const readOnly = session?.user?.role !== "admin";
+
   const [stages, applicants] = await Promise.all([
     fetchStages(id),
     fetchApplicants(id),
@@ -56,6 +60,6 @@ export default async function PipelinePage({
   }
 
   return (
-    <PipelineShell jobId={id} stages={stages} byStage={byStage} />
+    <PipelineShell jobId={id} stages={stages} byStage={byStage} readOnly={readOnly} />
   );
 }

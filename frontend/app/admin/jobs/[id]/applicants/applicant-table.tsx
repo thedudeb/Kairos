@@ -7,6 +7,8 @@ import { Search, RefreshCw, Download, ChevronUp, ChevronDown, X, Filter } from "
 import type { ApplicantListItem, PipelineStage } from "@/types/api";
 import { ParseStatusBadge } from "./parse-status-badge";
 import { ApplicantAvatar } from "@/components/applicant-avatar";
+import { FitScoreBadge } from "@/components/admin/fit-score-badge";
+import { SEARCH_INPUT_ID } from "@/components/admin/admin-keyboard-shortcuts";
 import { cn } from "@/lib/utils";
 
 function timeAgo(iso: string): string {
@@ -38,6 +40,7 @@ interface ApplicantTableProps {
   activeSkills: string[];
   sortBy: string;
   sortDir: string;
+  canExport?: boolean;
 }
 
 export function ApplicantTable({
@@ -54,6 +57,7 @@ export function ApplicantTable({
   activeSkills,
   sortBy,
   sortDir,
+  canExport = true,
 }: ApplicantTableProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -152,6 +156,7 @@ export function ApplicantTable({
         <form onSubmit={handleSearchSubmit} className="relative w-full sm:max-w-sm sm:flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <input
+            id={SEARCH_INPUT_ID}
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -189,6 +194,7 @@ export function ApplicantTable({
               <option value="degree">Group by degree</option>
             </select>
 
+            {canExport && (
             <a
               href={`/api/jobs/${jobId}/export`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
@@ -196,6 +202,7 @@ export function ApplicantTable({
               <Download className="h-4 w-4" />
               <span className="hidden sm:inline">Export CSV</span>
             </a>
+            )}
 
             {isPending && <RefreshCw className="h-4 w-4 animate-spin text-zinc-400" />}
           </div>
@@ -404,6 +411,11 @@ function ApplicantRow({ a, jobId }: { a: ApplicantListItem; jobId: string }) {
         <ParseStatusBadge status={a.parse_status} />
       </td>
 
+      {/* Fit score */}
+      <td className="px-4 py-3">
+        <FitScoreBadge score={a.fit_score} status={a.fit_status} />
+      </td>
+
       {/* Applied */}
       <td className="px-4 py-3 text-xs text-zinc-400 tabular-nums">
         {timeAgo(a.submitted_at)}
@@ -449,6 +461,12 @@ function ApplicantTableBody({
       </th>
       <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-400 lg:table-cell">
         Parse
+      </th>
+      <th
+        className="cursor-pointer px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+        onClick={() => onSort("fit_score")}
+      >
+        Fit <SortIcon col="fit_score" sortBy={sortBy} sortDir={sortDir} />
       </th>
       <th
         className="cursor-pointer px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"

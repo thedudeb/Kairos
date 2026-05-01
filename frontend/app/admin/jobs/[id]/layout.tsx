@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { auth } from "@/auth";
 import { BackendError } from "@/lib/api";
+import { JobWorkspaceProvider } from "./job-workspace-context";
 import { cn } from "@/lib/utils";
 import type { JobOut, JobStatus } from "@/types/api";
 import { getCachedJob } from "./job-data";
@@ -29,8 +31,11 @@ export default async function JobWorkspaceLayout({
     throw e;
   }
 
+  const session = await auth();
+
   return (
-    <div className="flex min-h-screen flex-col">
+    <JobWorkspaceProvider value={{ isAdmin: session?.user?.role === "admin" }}>
+      <div className="flex min-h-screen flex-col">
       {/* Job sub-header — sticky below main admin bar (h-14) so tabs stay clickable while scrolling */}
       {/* z-[45] below admin header (z-50), above page body (z-0) — otherwise long pages can
           paint over the tabs and swallow clicks while the window scrollbar still moves. */}
@@ -61,6 +66,7 @@ export default async function JobWorkspaceLayout({
       </div>
 
       <div className="relative z-0 flex-1">{children}</div>
-    </div>
+      </div>
+    </JobWorkspaceProvider>
   );
 }

@@ -18,9 +18,10 @@ interface PipelineShellProps {
   jobId: string;
   stages: Stage[];
   byStage: Record<string, ApplicantListItem[]>;
+  readOnly?: boolean;
 }
 
-export function PipelineShell({ jobId, stages, byStage }: PipelineShellProps) {
+export function PipelineShell({ jobId, stages, byStage, readOnly = false }: PipelineShellProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -66,57 +67,61 @@ export function PipelineShell({ jobId, stages, byStage }: PipelineShellProps) {
   const boardKey = stages.map((s) => `${s.id}:${s.sort_order}`).join(",");
 
   return (
-    <div className="flex h-[calc(100dvh-8rem)] flex-col overflow-hidden">
+    <div className="flex h-[calc(100dvh-12rem)] flex-col overflow-hidden md:h-[calc(100dvh-9rem)]">
       {/* Toolbar */}
       <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-800 dark:bg-zinc-950">
         <p className="hidden text-xs text-zinc-400 sm:block">
-          Drag cards between columns · Drag column headers to reorder
+          {readOnly
+            ? "View-only — contact an admin to move candidates or change stages."
+            : "Drag cards between columns · Drag column headers to reorder"}
         </p>
 
         <div className="flex items-center gap-2">
-          {error && (
-            <span className="text-xs text-red-500">{error}</span>
-          )}
-          {showAddForm ? (
-            <div className="flex items-center gap-1.5">
-              <input
-                autoFocus
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") addStage();
-                  if (e.key === "Escape") cancelAdd();
-                }}
-                placeholder="Stage name…"
-                className="h-8 w-32 rounded-md border border-zinc-200 bg-white px-2.5 text-sm outline-none focus:border-indigo-400 sm:w-44 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-              />
-              <button
-                onClick={addStage}
-                disabled={isPending || !newName.trim()}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-zinc-900 text-white disabled:opacity-40 hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"
-              >
-                {isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Check className="h-3.5 w-3.5" />
-                )}
-              </button>
-              <button
-                onClick={cancelAdd}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={openAdd}
-              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              <Plus className="h-4 w-4" />
-              Add stage
-            </button>
+          {!readOnly && (
+            <>
+              {error && <span className="text-xs text-red-500">{error}</span>}
+              {showAddForm ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addStage();
+                      if (e.key === "Escape") cancelAdd();
+                    }}
+                    placeholder="Stage name…"
+                    className="h-8 w-32 rounded-md border border-zinc-200 bg-white px-2.5 text-sm outline-none focus:border-indigo-400 sm:w-44 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                  />
+                  <button
+                    onClick={addStage}
+                    disabled={isPending || !newName.trim()}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-zinc-900 text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
+                  >
+                    {isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                  <button
+                    onClick={cancelAdd}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-500 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={openAdd}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add stage
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -127,6 +132,7 @@ export function PipelineShell({ jobId, stages, byStage }: PipelineShellProps) {
           jobId={jobId}
           stages={stages}
           initialByStage={byStage}
+          readOnly={readOnly}
         />
       </div>
     </div>

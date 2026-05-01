@@ -96,7 +96,14 @@ export async function createJob(data: {
 
 export async function updateJobMeta(
   id: string,
-  data: { title?: string; slug?: string; description_md?: string },
+  data: {
+    title?: string;
+    slug?: string;
+    description_md?: string;
+    description_kind?: "markdown" | "external";
+    description_external_url?: string | null;
+    description_summary?: string | null;
+  },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     await backendFetch<JobOut>(`/jobs/${id}`, {

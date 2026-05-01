@@ -10,13 +10,16 @@ interface ReparseButtonProps {
   jobId: string;
   applicantId: string;
   parseStatus: ParseStatus;
+  readOnly?: boolean;
 }
 
 export function ReparseButton({
   jobId,
   applicantId,
   parseStatus,
+  readOnly = false,
 }: ReparseButtonProps) {
+  if (readOnly) return null;
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 

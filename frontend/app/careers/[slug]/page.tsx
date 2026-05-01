@@ -28,6 +28,9 @@ interface JobData {
   slug: string;
   status: "active" | "closed" | "draft";
   description_md: string;
+  description_kind: "markdown" | "external";
+  description_external_url: string | null;
+  description_summary: string | null;
   form_fields: Array<{
     id: string;
     label: string;
@@ -35,6 +38,7 @@ interface JobData {
     is_required: boolean;
     options: string[] | null;
     sort_order: number;
+    file_allowed_types?: string[] | null;
   }>;
 }
 
@@ -127,11 +131,30 @@ export default async function PublicJobPage({
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-12">
 
         {/* Description */}
-        {job.description_md && (
+        {(job.description_kind === "external" && job.description_external_url) || job.description_md ? (
           <div className="mb-12">
-            <JobDescription markdown={job.description_md} />
+            {job.description_kind === "external" && job.description_external_url ? (
+              <div className="rounded-2xl border border-zinc-200 bg-white px-6 py-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:px-8">
+                {job.description_summary ? (
+                  <div className="mb-5">
+                    <MarkdownContent markdown={job.description_summary} />
+                  </div>
+                ) : null}
+                <a
+                  href={job.description_external_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                >
+                  View full job description
+                  <span className="text-xs opacity-80">↗</span>
+                </a>
+              </div>
+            ) : job.description_md ? (
+              <JobDescription markdown={job.description_md} />
+            ) : null}
           </div>
-        )}
+        ) : null}
 
         {/* Application form card */}
         <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-8 dark:border-zinc-800 dark:bg-zinc-900">

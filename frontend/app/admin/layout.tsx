@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { SignOutButton } from "@/components/sign-out-button";
 import { HelpButton } from "@/components/admin/help-button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { AdminKeyboardShortcuts } from "@/components/admin/admin-keyboard-shortcuts";
 
 export default async function AdminLayout({
   children,
@@ -30,6 +31,14 @@ export default async function AdminLayout({
             <span className="text-sm font-semibold tracking-tight">Kairos</span>
           </Link>
           <div className="flex items-center gap-3">
+            {session?.user?.role === "admin" && (
+              <Link
+                href="/admin/settings/users"
+                className="hidden text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 sm:inline"
+              >
+                Team
+              </Link>
+            )}
             {session?.user && (
               <span className="hidden items-center gap-2 sm:inline-flex">
                 <span className="max-w-[160px] truncate text-sm text-zinc-600 dark:text-zinc-400 lg:max-w-xs">
@@ -47,6 +56,7 @@ export default async function AdminLayout({
         </div>
       </header>
       <main className="flex-1">{children}</main>
+      <AdminKeyboardShortcuts />
     </div>
   );
 }

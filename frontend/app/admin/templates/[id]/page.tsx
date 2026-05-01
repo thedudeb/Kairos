@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/auth";
 import { backendFetch, BackendError } from "@/lib/api";
 import type { TemplateOut } from "@/types/api";
 import { TemplateEditor } from "@/components/admin/template-editor";
@@ -9,6 +10,8 @@ export default async function EditTemplatePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const session = await auth();
+  const readOnly = session?.user?.role !== "admin";
 
   let template: TemplateOut;
   try {
@@ -20,7 +23,7 @@ export default async function EditTemplatePage({
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-10">
-      <TemplateEditor template={template} />
+      <TemplateEditor template={template} readOnly={readOnly} />
     </div>
   );
 }

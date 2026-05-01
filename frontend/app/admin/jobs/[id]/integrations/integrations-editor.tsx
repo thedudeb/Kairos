@@ -44,12 +44,13 @@ interface Props {
   jobId: string;
   integrations: IntegrationOut[];
   stages: PipelineStage[];
+  readOnly?: boolean;
 }
 
 const inputCls =
   "block w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100";
 
-export function IntegrationsEditor({ jobId, integrations, stages }: Props) {
+export function IntegrationsEditor({ jobId, integrations, stages, readOnly = false }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -93,10 +94,16 @@ export function IntegrationsEditor({ jobId, integrations, stages }: Props) {
             Configure webhooks to fire when an applicant reaches a specific
             pipeline stage.
           </p>
+          {readOnly && (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400/90">
+              View-only — only admins can add or change integrations.
+            </p>
+          )}
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"
+          disabled={readOnly}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:pointer-events-none disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
         >
           <Plus className="h-4 w-4" />
           Add integration
@@ -104,7 +111,7 @@ export function IntegrationsEditor({ jobId, integrations, stages }: Props) {
       </div>
 
       {/* Create form */}
-      {showForm && (
+      {showForm && !readOnly && (
         <form
           onSubmit={handleCreate}
           className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
@@ -196,7 +203,9 @@ export function IntegrationsEditor({ jobId, integrations, stages }: Props) {
         <div className="flex flex-col items-center rounded-xl border border-dashed border-zinc-200 py-16 text-center dark:border-zinc-800">
           <p className="text-sm font-medium text-zinc-500">No integrations yet</p>
           <p className="mt-1 text-xs text-zinc-400">
-            Add a webhook to notify external systems when applicants progress
+            {readOnly
+              ? "Admins can add webhooks to notify external systems when applicants progress."
+              : "Add a webhook to notify external systems when applicants progress"}
           </p>
         </div>
       ) : (
@@ -206,6 +215,7 @@ export function IntegrationsEditor({ jobId, integrations, stages }: Props) {
               key={integ.id}
               jobId={jobId}
               integration={integ}
+              readOnly={readOnly}
             />
           ))}
         </div>
@@ -217,9 +227,11 @@ export function IntegrationsEditor({ jobId, integrations, stages }: Props) {
 function IntegrationRow({
   jobId,
   integration,
+  readOnly = false,
 }: {
   jobId: string;
   integration: IntegrationOut;
+  readOnly?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -318,39 +330,43 @@ function IntegrationRow({
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={handleToggleActive}
-            disabled={isPending}
-            className={cn(
-              "rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
-              integration.is_active
-                ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400"
-                : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800",
-            )}
-          >
-            {integration.is_active ? "Active" : "Inactive"}
-          </button>
-          <button
-            onClick={handleTest}
-            disabled={testingPending}
-            title="Send a sample payload to test the endpoint"
-            className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
-          >
-            {testingPending ? (
-              <RefreshCw className="h-3 w-3 animate-spin" />
-            ) : (
-              <Zap className="h-3 w-3" />
-            )}
-            Test
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={isPending}
-            className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {!readOnly && (
+            <>
+              <button
+                onClick={handleToggleActive}
+                disabled={isPending}
+                className={cn(
+                  "rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
+                  integration.is_active
+                    ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400"
+                    : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800",
+                )}
+              >
+                {integration.is_active ? "Active" : "Inactive"}
+              </button>
+              <button
+                onClick={handleTest}
+                disabled={testingPending}
+                title="Send a sample payload to test the endpoint"
+                className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              >
+                {testingPending ? (
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Zap className="h-3 w-3" />
+                )}
+                Test
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isPending}
+                className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </>
+          )}
           <button
             onClick={toggleExpand}
             className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
@@ -441,7 +457,7 @@ function IntegrationRow({
                       <p className="mt-1 truncate text-xs text-zinc-400">{d.response_body}</p>
                     )}
                   </div>
-                  {!d.success && (
+                  {!d.success && !readOnly && (
                     <button
                       onClick={() => handleRetry(d.id)}
                       disabled={isPending}

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { auth } from "@/auth";
 import { ArrowLeft, ExternalLink, FileText, RefreshCw, GraduationCap, Briefcase, Mail, Phone, Clock } from "lucide-react";
 import { backendFetch } from "@/lib/api";
 import type { ApplicantDetail, PipelineStage } from "@/types/api";
@@ -10,6 +11,7 @@ import { ReparseButton } from "./reparse-button";
 import { ResumeEditor } from "./resume-editor";
 import { ResumePdfViewer } from "./resume-pdf-viewer";
 import { ApplicantAvatar } from "@/components/applicant-avatar";
+import { FitScoreCard } from "./fit-score-card";
 
 async function fetchApplicant(jobId: string, applicantId: string): Promise<ApplicantDetail | null> {
   try {
@@ -64,6 +66,9 @@ export default async function ApplicantDetailPage({
   ]);
 
   if (!applicant) notFound();
+
+  const session = await auth();
+  const isAdmin = session?.user?.role === "admin";
 
   const pr = applicant.parsed_resume;
 
@@ -161,8 +166,15 @@ export default async function ApplicantDetailPage({
               <div className="mb-5 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Resume intelligence</h2>
                 <div className="flex items-center gap-2">
-                  {pr && <ResumeEditor jobId={jobId} applicantId={applicantId} parsed={pr} />}
-                  <ReparseButton jobId={jobId} applicantId={applicantId} parseStatus={applicant.parse_status} />
+                  {pr && (
+                    <ResumeEditor jobId={jobId} applicantId={applicantId} parsed={pr} readOnly={!isAdmin} />
+                  )}
+                  <ReparseButton
+                    jobId={jobId}
+                    applicantId={applicantId}
+                    parseStatus={applicant.parse_status}
+                    readOnly={!isAdmin}
+                  />
                 </div>
               </div>
 
@@ -187,6 +199,21 @@ export default async function ApplicantDetailPage({
 
               {pr && (
                 <div className="space-y-7">
+
+                  {/* Confidence banner — surface AI's "I wasn't sure about X" notes upfront */}
+                  {pr.confidence_notes && Object.keys(pr.confidence_notes).length > 0 && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/15 dark:text-amber-300">
+                      <p className="mb-1 font-semibold">AI parser flagged {Object.keys(pr.confidence_notes).length} field{Object.keys(pr.confidence_notes).length === 1 ? "" : "s"} with low confidence.</p>
+                      <ul className="space-y-0.5 pl-4 [list-style-type:disc]">
+                        {Object.entries(pr.confidence_notes).map(([k, v]) => (
+                          <li key={k}>
+                            <span className="font-mono">{k}</span>: {String(v)}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="mt-1.5 italic">Use Edit to correct manually, or check the original resume.</p>
+                    </div>
+                  )}
 
                   {/* Skills — coloured chips */}
                   {pr.skills.length > 0 && (
@@ -278,9 +305,9 @@ export default async function ApplicantDetailPage({
                   <div>
                     <SectionLabel>Parsed contact info</SectionLabel>
                     <div className="grid gap-3 sm:grid-cols-3">
-                      <InfoItem label="Full name" value={pr.full_name} />
-                      <InfoItem label="Email"     value={pr.email} />
-                      <InfoItem label="Phone"     value={pr.phone} />
+                      <InfoItem label="Full name" value={pr.full_name} note={note(pr.confidence_notes, "full_name")} />
+                      <InfoItem label="Email"     value={pr.email}     note={note(pr.confidence_notes, "email")} />
+                      <InfoItem label="Phone"     value={pr.phone}     note={note(pr.confidence_notes, "phone")} />
                     </div>
                   </div>
 
@@ -317,8 +344,15 @@ export default async function ApplicantDetailPage({
             )}
           </div>
 
-          {/* ── Right: stage + notes + activity ── */}
+          {/* ── Right: fit + stage + notes + activity ── */}
           <div className="order-1 space-y-5 lg:order-2">
+
+            <FitScoreCard
+              jobId={jobId}
+              applicantId={applicantId}
+              fit={applicant.fit_score_detail}
+              isAdmin={isAdmin}
+            />
 
             <section className="rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
@@ -329,6 +363,7 @@ export default async function ApplicantDetailPage({
                 applicantId={applicantId}
                 stages={stages}
                 currentStageId={applicant.current_stage_id}
+                readOnly={!isAdmin}
               />
             </section>
 
@@ -340,6 +375,7 @@ export default async function ApplicantDetailPage({
                 jobId={jobId}
                 applicantId={applicantId}
                 existingNotes={applicant.notes}
+                readOnly={!isAdmin}
               />
             </section>
 
@@ -376,13 +412,37 @@ function SectionLabel({ children, icon }: { children: React.ReactNode; icon?: Re
   );
 }
 
-function InfoItem({ label, value }: { label: string; value: string | null | undefined }) {
+function InfoItem({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string | null | undefined;
+  note?: string | null;
+}) {
   return (
     <div>
       <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">{label}</p>
       <p className="mt-0.5 text-sm text-zinc-800 dark:text-zinc-200">
         {value ?? <span className="text-zinc-300 dark:text-zinc-600">—</span>}
       </p>
+      {note && (
+        <p
+          className="mt-1 inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+          title="AI parser flagged low confidence on this field"
+        >
+          <span aria-hidden>!</span>
+          {note}
+        </p>
+      )}
     </div>
   );
+}
+
+/** Pull a string note for a given field key out of confidence_notes. */
+function note(notes: Record<string, unknown> | null | undefined, key: string): string | null {
+  if (!notes) return null;
+  const v = notes[key];
+  return typeof v === "string" && v.trim() ? v : null;
 }

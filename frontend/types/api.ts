@@ -10,6 +10,8 @@ export type FieldType =
 
 export type JobStatus = "draft" | "active" | "closed";
 
+export type JobDescriptionKind = "markdown" | "external";
+
 export interface FormFieldItem {
   id: string;
   label: string;
@@ -17,6 +19,7 @@ export interface FormFieldItem {
   is_required: boolean;
   options: string[] | null;
   sort_order: number;
+  file_allowed_types?: string[] | null;
 }
 
 export interface AssessmentQuestionItem {
@@ -68,9 +71,29 @@ export interface JobListItem {
 
 export interface JobOut extends JobListItem {
   description_md: string;
+  description_kind: JobDescriptionKind;
+  description_external_url: string | null;
+  description_summary: string | null;
   updated_at: string;
   form_fields: FormFieldItem[];
   assessment_questions: AssessmentQuestionItem[];
+}
+
+export type StaffRole = "admin" | "reviewer";
+
+export interface StaffUserOut {
+  id: string;
+  email: string;
+  name: string | null;
+  role: StaffRole;
+}
+
+export interface InviteOut {
+  id: string;
+  email: string;
+  role: StaffRole;
+  invited_by_id: string | null;
+  created_at: string;
 }
 
 export interface PipelineStage {
@@ -145,6 +168,20 @@ export interface ActivityEvent {
   detail: string;
 }
 
+export type RankStatus = "pending" | "ranking" | "done" | "failed" | "skipped";
+
+export interface FitScoreOut {
+  status: RankStatus;
+  fit_score: number | null;
+  skills_match: number | null;
+  experience_match: number | null;
+  trajectory: number | null;
+  reasoning: string | null;
+  model: string | null;
+  error: string | null;
+  generated_at: string | null;
+}
+
 export interface ApplicantListItem {
   id: string;
   first_name: string;
@@ -159,6 +196,8 @@ export interface ApplicantListItem {
   submitted_at: string;
   stage_entered_at: string;
   resume_url: string;
+  fit_score: number | null;
+  fit_status: RankStatus | null;
 }
 
 export interface ApplicantDetail extends ApplicantListItem {
@@ -169,4 +208,5 @@ export interface ApplicantDetail extends ApplicantListItem {
   custom_fields: CustomFieldValueOut[];
   notes: NoteOut[];
   activity: ActivityEvent[];
+  fit_score_detail: FitScoreOut | null;
 }

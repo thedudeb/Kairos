@@ -12,6 +12,7 @@ interface StageMoverProps {
   applicantId: string;
   stages: PipelineStage[];
   currentStageId: string;
+  readOnly?: boolean;
 }
 
 export function StageMover({
@@ -19,6 +20,7 @@ export function StageMover({
   applicantId,
   stages,
   currentStageId,
+  readOnly = false,
 }: StageMoverProps) {
   const [isPending, startTransition] = useTransition();
   const [pendingStageId, setPendingStageId] = useState<string | null>(null);
@@ -26,6 +28,16 @@ export function StageMover({
   const router = useRouter();
 
   const sortedStages = stages.slice().sort((a, b) => a.sort_order - b.sort_order);
+
+  if (readOnly) {
+    const cur = sortedStages.find((s) => s.id === currentStageId);
+    return (
+      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        Current stage:{" "}
+        <span className="font-medium text-zinc-900 dark:text-zinc-100">{cur?.name ?? "—"}</span>
+      </p>
+    );
+  }
 
   function handleStageClick(stageId: string) {
     if (stageId === currentStageId || isPending) return;

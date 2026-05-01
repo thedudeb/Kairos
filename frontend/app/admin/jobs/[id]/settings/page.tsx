@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/auth";
 import { backendFetch, BackendError } from "@/lib/api";
 import type { JobOut, TemplateSummary } from "@/types/api";
 import { getCachedJob } from "../job-data";
@@ -24,10 +25,13 @@ export default async function JobSettingsPage({
     throw e;
   }
 
+  const session = await auth();
+  const isAdmin = session?.user?.role === "admin";
+
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
       <h1 className="mb-6 text-lg font-semibold tracking-tight">Job settings</h1>
-      <JobSettingsEditor job={job} templates={templates} />
+      <JobSettingsEditor job={job} templates={templates} readOnly={!isAdmin} />
     </div>
   );
 }

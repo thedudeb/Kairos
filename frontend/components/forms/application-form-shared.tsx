@@ -11,6 +11,52 @@ export interface ApplicationCustomField {
   is_required: boolean;
   options: string[] | null;
   sort_order: number;
+  file_allowed_types?: string[] | null;
+}
+
+function fileAcceptAttr(types: string[] | null | undefined): string {
+  if (!types?.length) {
+    return [
+      ".pdf",
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".webp",
+      ".doc",
+      ".docx",
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ].join(",");
+  }
+  const parts: string[] = [];
+  for (const m of types) {
+    parts.push(m);
+    if (m === "application/pdf") parts.push(".pdf");
+    if (m === "image/jpeg") parts.push(".jpg", ".jpeg");
+    if (m === "image/png") parts.push(".png");
+    if (m === "image/webp") parts.push(".webp");
+    if (m === "application/msword") parts.push(".doc");
+    if (m === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") parts.push(".docx");
+  }
+  return [...new Set(parts)].join(",");
+}
+
+function fileFieldHint(types: string[] | null | undefined): string {
+  if (!types?.length) return "Common formats, max 10 MB";
+  const labels = types.map((m) => {
+    if (m === "application/pdf") return "PDF";
+    if (m === "image/jpeg") return "JPEG";
+    if (m === "image/png") return "PNG";
+    if (m === "image/webp") return "WebP";
+    if (m === "application/msword") return "DOC";
+    if (m === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return "DOCX";
+    return m;
+  });
+  return `${labels.join(", ")} · max 10 MB`;
 }
 
 export const APPLICATION_INPUT_CLASS =
@@ -48,6 +94,7 @@ export function FileDropZone({
   disabled,
   filename,
   onChange,
+  hint,
 }: {
   name: string;
   accept: string;
@@ -55,6 +102,7 @@ export function FileDropZone({
   disabled?: boolean;
   filename: string | null;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  hint?: string;
 }) {
   return (
     <div>
@@ -91,7 +139,7 @@ export function FileDropZone({
             <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
               Click to upload
             </span>
-            <span className="text-xs text-zinc-400">PDF only, max 10 MB</span>
+            <span className="text-xs text-zinc-400">{hint ?? "PDF only, max 10 MB"}</span>
           </>
         )}
       </label>
@@ -165,11 +213,12 @@ export function CustomFieldInput({
       return (
         <FileDropZone
           name={fileFieldName}
-          accept=".pdf,application/pdf"
+          accept={fileAcceptAttr(field.file_allowed_types)}
           required={field.is_required}
           disabled={disabled}
           filename={customFilename}
           onChange={onFileChange}
+          hint={fileFieldHint(field.file_allowed_types)}
         />
       );
 

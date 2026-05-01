@@ -13,6 +13,7 @@ import {
 import type {
   AssessmentQuestionItem,
   FormFieldItem,
+  JobDescriptionKind,
   JobOut,
   TemplateSummary,
 } from "@/types/api";
@@ -22,9 +23,11 @@ type Tab = "meta" | "fields" | "questions" | "template";
 export function JobSettingsEditor({
   job,
   templates,
+  readOnly = false,
 }: {
   job: JobOut;
   templates: TemplateSummary[];
+  readOnly?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<Tab>("meta");
   const [isPending, startTransition] = useTransition();
@@ -39,6 +42,9 @@ export function JobSettingsEditor({
   const [title, setTitle] = useState(job.title);
   const [slug, setSlug] = useState(job.slug);
   const [description, setDescription] = useState(job.description_md);
+  const [descKind, setDescKind] = useState<JobDescriptionKind>(job.description_kind ?? "markdown");
+  const [extUrl, setExtUrl] = useState(job.description_external_url ?? "");
+  const [summary, setSummary] = useState(job.description_summary ?? "");
 
   // ── Fields tab state ────────────────────────────────────────────────────────
   const [fields, setFields] = useState<Omit<FormFieldItem, "sort_order">[]>(
@@ -59,6 +65,9 @@ export function JobSettingsEditor({
         title,
         slug,
         description_md: description,
+        description_kind: descKind,
+        description_external_url: descKind === "external" ? extUrl.trim() || null : null,
+        description_summary: descKind === "external" ? summary.trim() || null : null,
       });
       notify(res.ok, res.ok ? "Saved!" : `Error: ${"error" in res ? res.error : ""}`);
     });
@@ -140,7 +149,7 @@ export function JobSettingsEditor({
         <div className="space-y-5">
           <div>
             <label className="mb-1.5 block text-sm font-medium">Job title</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputBase} />
+            <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputBase} disabled={readOnly} />
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium">URL slug</label>
@@ -150,19 +159,81 @@ export function JobSettingsEditor({
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
                 className={`${inputBase} flex-1`}
+                disabled={readOnly}
               />
             </div>
           </div>
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Description (Markdown)</label>
-            <textarea
-              rows={10}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className={inputBase}
-            />
+            <label className="mb-1.5 block text-sm font-medium">Description source</label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="descKind"
+                  checked={descKind === "markdown"}
+                  onChange={() => setDescKind("markdown")}
+                  disabled={readOnly}
+                  className="h-4 w-4 accent-zinc-900"
+                />
+                Markdown on this page
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="descKind"
+                  checked={descKind === "external"}
+                  onChange={() => setDescKind("external")}
+                  disabled={readOnly}
+                  className="h-4 w-4 accent-zinc-900"
+                />
+                External link (HTTPS)
+              </label>
+            </div>
           </div>
-          <SaveButton onClick={saveMeta} disabled={isPending} />
+          {descKind === "markdown" ? (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">Description (Markdown)</label>
+              <textarea
+                rows={10}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className={inputBase}
+                disabled={readOnly}
+              />
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Full description URL (HTTPS)</label>
+                <input
+                  type="url"
+                  value={extUrl}
+                  onChange={(e) => setExtUrl(e.target.value)}
+                  placeholder="https://docs.google.com/..."
+                  className={inputBase}
+                  disabled={readOnly}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">
+                  Short summary <span className="font-normal text-zinc-400">(optional, shown on posting)</span>
+                </label>
+                <textarea
+                  rows={4}
+                  value={summary}
+                  onChange={(e) => setSummary(e.target.value)}
+                  placeholder="Brief intro shown above the “View full description” link."
+                  className={inputBase}
+                  disabled={readOnly}
+                />
+              </div>
+            </>
+          )}
+          {readOnly ? (
+            <p className="text-sm text-zinc-500">You have read-only access. Ask an admin to change job settings.</p>
+          ) : (
+            <SaveButton onClick={saveMeta} disabled={isPending} />
+          )}
         </div>
       )}
 
@@ -185,8 +256,9 @@ export function JobSettingsEditor({
           <FormBuilder
             initialFields={job.form_fields}
             onChange={setFields}
+            readOnly={readOnly}
           />
-          <SaveButton onClick={saveFields} disabled={isPending} />
+          {!readOnly && <SaveButton onClick={saveFields} disabled={isPending} />}
         </div>
       )}
 
@@ -201,8 +273,9 @@ export function JobSettingsEditor({
           <AssessmentQuestionsEditor
             initialQuestions={job.assessment_questions}
             onChange={setQuestions}
+            readOnly={readOnly}
           />
-          <SaveButton onClick={saveQuestions} disabled={isPending} />
+          {!readOnly && <SaveButton onClick={saveQuestions} disabled={isPending} />}
         </div>
       )}
 
@@ -245,7 +318,7 @@ export function JobSettingsEditor({
               )}
               <button
                 type="button"
-                disabled={!selectedTemplateId || isPending}
+                disabled={!selectedTemplateId || isPending || readOnly}
                 onClick={applySelectedTemplate}
                 className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
               >

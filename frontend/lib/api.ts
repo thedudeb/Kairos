@@ -45,7 +45,11 @@ export async function backendFetch<T>(
   });
 
   if (!res.ok) {
-    throw new BackendError(res.status, await res.text());
+    const text = await res.text();
+    if (res.status === 401) {
+      throw new BackendError(401, "Session expired — please sign in again.");
+    }
+    throw new BackendError(res.status, text);
   }
 
   if (res.status === 204) return undefined as T;

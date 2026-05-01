@@ -32,6 +32,15 @@ const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: "checkbox", label: "Checkbox" },
 ];
 
+const FILE_MIME_OPTIONS: { mime: string; label: string }[] = [
+  { mime: "application/pdf", label: "PDF" },
+  { mime: "image/jpeg", label: "JPEG" },
+  { mime: "image/png", label: "PNG" },
+  { mime: "image/webp", label: "WebP" },
+  { mime: "application/msword", label: "DOC" },
+  { mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", label: "DOCX" },
+];
+
 type DraftField = Omit<FormFieldItem, "sort_order">;
 
 interface FormBuilderProps {
@@ -49,6 +58,7 @@ function newField(): DraftField {
     field_type: "text",
     is_required: false,
     options: null,
+    file_allowed_types: null,
   };
 }
 
@@ -110,6 +120,13 @@ export function FormBuilder({ initialFields, onChange, readOnly = false }: FormB
                 uid={uid}
                 onPatch={(patch) => patchField(field.id, patch)}
                 onPatchOptions={(raw) => patchOptions(field.id, raw)}
+                onPatchFileTypes={(mime, checked) => {
+                  const cur = new Set(field.file_allowed_types ?? []);
+                  if (checked) cur.add(mime);
+                  else cur.delete(mime);
+                  const arr = [...cur];
+                  patchField(field.id, { file_allowed_types: arr.length ? arr : null });
+                }}
                 onRemove={() => removeField(field.id)}
               />
             </SortableItem>
@@ -141,10 +158,11 @@ interface FieldRowProps {
   uid: string;
   onPatch: (patch: Partial<DraftField>) => void;
   onPatchOptions: (raw: string) => void;
+  onPatchFileTypes: (mime: string, checked: boolean) => void;
   onRemove: () => void;
 }
 
-function FieldRow({ field, readOnly, uid, onPatch, onPatchOptions, onRemove }: FieldRowProps) {
+function FieldRow({ field, readOnly, uid, onPatch, onPatchOptions, onPatchFileTypes, onRemove }: FieldRowProps) {
   const inputBase =
     "block w-full rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-200 disabled:bg-zinc-50 disabled:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-500 dark:focus:ring-zinc-700";
 
@@ -223,6 +241,28 @@ function FieldRow({ field, readOnly, uid, onPatch, onPatchOptions, onRemove }: F
             placeholder="Option A, Option B, Option C"
             className={inputBase}
           />
+        </div>
+      )}
+
+      {field.field_type === "file" && (
+        <div className="mt-3">
+          <label className="mb-1 block text-xs font-medium text-zinc-500">
+            Allowed file types <span className="font-normal">(none = all common types)</span>
+          </label>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {FILE_MIME_OPTIONS.map(({ mime, label }) => (
+              <label key={mime} className="flex items-center gap-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+                <input
+                  type="checkbox"
+                  disabled={readOnly}
+                  checked={field.file_allowed_types?.includes(mime) ?? false}
+                  onChange={(e) => onPatchFileTypes(mime, e.target.checked)}
+                  className="h-4 w-4 rounded border-zinc-300 accent-zinc-900"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
         </div>
       )}
     </div>

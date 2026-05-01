@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { auth } from "@/auth";
 import { Users, TrendingUp, Calendar, Layers } from "lucide-react";
 import { backendFetch, BackendError } from "@/lib/api";
 import type { JobOut } from "@/types/api";
@@ -127,16 +128,25 @@ export default async function JobOverviewPage({
     analyticsFetchArgs = { mode: "preset", volumeDays };
   }
 
-  let job: JobOut;
-  try {
-    job = await getCachedJob(id);
-  } catch (e) {
-    if (e instanceof BackendError && e.status === 404) notFound();
-    throw e;
-  }
+  // Fire job, analytics, and session in parallel — they are independent.
+  const [jobResult, analytics, session] = await Promise.all([
+    getCachedJob(id).then(
+      (j) => ({ ok: true as const, job: j }),
+      (e: unknown) => ({ ok: false as const, error: e }),
+    ),
+    fetchAnalytics(id, analyticsFetchArgs),
+    auth(),
+  ]);
 
-  const analytics = await fetchAnalytics(id, analyticsFetchArgs);
+  if (!jobResult.ok) {
+    if (jobResult.error instanceof BackendError && jobResult.error.status === 404) {
+      notFound();
+    }
+    throw jobResult.error;
+  }
+  const job = jobResult.job;
   const { summary } = job;
+  const isAdmin = session?.user?.role === "admin";
 
   const inPipeline = summary.stage_distribution.reduce((s, d) => s + d.count, 0);
 
@@ -205,7 +215,7 @@ export default async function JobOverviewPage({
         </div>
 
         <div className="flex flex-wrap gap-2 sm:shrink-0">
-          {job.status === "draft" && (
+          {isAdmin && job.status === "draft" && (
             <form action={changeStatus.bind(null, id, "active")} className="w-full sm:w-auto">
               <button
                 type="submit"
@@ -215,7 +225,7 @@ export default async function JobOverviewPage({
               </button>
             </form>
           )}
-          {job.status === "active" && (
+          {isAdmin && job.status === "active" && (
             <form action={changeStatus.bind(null, id, "closed")} className="w-full sm:w-auto">
               <button
                 type="submit"
@@ -225,7 +235,7 @@ export default async function JobOverviewPage({
               </button>
             </form>
           )}
-          {job.status === "closed" && (
+          {isAdmin && job.status === "closed" && (
             <form action={changeStatus.bind(null, id, "active")} className="w-full sm:w-auto">
               <button
                 type="submit"

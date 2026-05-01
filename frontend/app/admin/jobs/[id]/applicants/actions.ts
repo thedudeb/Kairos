@@ -86,6 +86,22 @@ export async function deleteNote(
   return { ok: true };
 }
 
+export interface EducationPatch {
+  institution: string | null;
+  degree: string | null;
+  field_of_study: string | null;
+  start_year: number | null;
+  end_year: number | null;
+}
+
+export interface WorkPatch {
+  company: string | null;
+  title: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  description: string | null;
+}
+
 export async function correctParsedResume(
   jobId: string,
   applicantId: string,
@@ -96,6 +112,8 @@ export async function correctParsedResume(
     top_institution?: string | null;
     top_degree?: string | null;
     skills?: string[];
+    education?: EducationPatch[];
+    work?: WorkPatch[];
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const res = await authedFetch(
@@ -122,4 +140,29 @@ export async function reparseResume(
   const data = (await res.json()) as { queued?: boolean };
   revalidatePath(`/admin/jobs/${jobId}/applicants/${applicantId}`);
   return { ok: true, queued: data.queued ?? false };
+}
+
+export async function rerankApplicant(
+  jobId: string,
+  applicantId: string,
+): Promise<{ ok: boolean; queued: boolean }> {
+  const res = await authedFetch(
+    `/jobs/${jobId}/applicants/${applicantId}/rerank`,
+    { method: "POST" },
+  );
+  if (!res.ok) return { ok: false, queued: false };
+  const data = (await res.json()) as { queued?: boolean };
+  revalidatePath(`/admin/jobs/${jobId}/applicants/${applicantId}`);
+  revalidatePath(`/admin/jobs/${jobId}/applicants`);
+  return { ok: true, queued: data.queued ?? false };
+}
+
+export async function rerankAllApplicants(
+  jobId: string,
+): Promise<{ ok: boolean; queued: number }> {
+  const res = await authedFetch(`/jobs/${jobId}/rerank-all`, { method: "POST" });
+  if (!res.ok) return { ok: false, queued: 0 };
+  const data = (await res.json()) as { queued?: number };
+  revalidatePath(`/admin/jobs/${jobId}/applicants`);
+  return { ok: true, queued: data.queued ?? 0 };
 }

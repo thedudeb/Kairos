@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { backendFetch } from "@/lib/api";
 import type { PipelineStage } from "@/types/api";
 import { IntegrationsEditor } from "./integrations-editor";
@@ -35,6 +36,9 @@ export default async function IntegrationsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const session = await auth();
+  const readOnly = session?.user?.role !== "admin";
+
   const [integrations, stages] = await Promise.all([
     fetchIntegrations(id),
     fetchStages(id),
@@ -46,6 +50,7 @@ export default async function IntegrationsPage({
         jobId={id}
         integrations={integrations}
         stages={stages}
+        readOnly={readOnly}
       />
     </div>
   );

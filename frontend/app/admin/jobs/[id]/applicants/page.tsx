@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { auth } from "@/auth";
 import { backendFetch } from "@/lib/api";
 import type { ApplicantListItem, JobOut, PipelineStage } from "@/types/api";
 import { getCachedJob } from "../job-data";
@@ -85,6 +86,9 @@ export default async function ApplicantsPage({
 
   if (!job) notFound();
 
+  const session = await auth();
+  const isAdmin = session?.user?.role === "admin";
+
   return (
     <div className="p-4 sm:p-6">
       <ApplicantTable
@@ -101,6 +105,7 @@ export default async function ApplicantsPage({
         activeSkills={skillsParam}
         sortBy={(sp.sort_by as string) || "submitted_at"}
         sortDir={(sp.sort_dir as string) || "desc"}
+        canExport={isAdmin}
       />
     </div>
   );
