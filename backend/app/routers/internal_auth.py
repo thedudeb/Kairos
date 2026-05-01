@@ -11,6 +11,7 @@ from sqlmodel import Session, func, select
 from app.config import settings
 from app.db import get_session
 from app.models._base import Role
+from app.models.user import User
 from app.models.user_invite import UserInvite
 from app.schemas.auth import UserOut, UserSyncRequest, UserSyncResponse
 from app.security import issue_session_token, require_internal_api_key
