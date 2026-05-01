@@ -25,7 +25,7 @@ from uuid import UUID, uuid4
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import os
-os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://dude@localhost:5432/recruitment")
+os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://postgres:postgres@localhost:5432/recruitment")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("AUTH_SECRET", "local-dev-only-replace-me-in-prod-1234567890abcdef")
 os.environ.setdefault("INTERNAL_API_KEY", "local-dev-internal-key-replace-me-in-prod-1234567890abcdef")

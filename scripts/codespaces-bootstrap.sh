@@ -76,7 +76,7 @@ echo "→ running alembic migrations"
 # ───────────────────────────────────────────────────────────────────────────
 HAS_JOBS=$(
   cd backend
-  uv run python -c "
+  DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/recruitment" uv run python -c "
 from app.db import engine
 from sqlmodel import Session, select, func
 from app.models.job import Job
@@ -88,7 +88,7 @@ with Session(engine) as s:
 
 if [ "$HAS_JOBS" = "0" ]; then
   echo "→ seeding demo data"
-  ( cd backend && uv run python -m scripts.seed )
+  ( cd backend && DATABASE_URL="postgresql+psycopg://postgres:postgres@localhost:5432/recruitment" uv run python -m scripts.seed )
 else
   echo "→ skipping seed (already $HAS_JOBS jobs in DB)"
 fi
