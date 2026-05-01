@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models._base import FieldType
+from app.schemas.job import _validate_file_mimes
 
 
 class TemplateFormFieldIn(BaseModel):
@@ -14,6 +15,12 @@ class TemplateFormFieldIn(BaseModel):
     is_required: bool = False
     options: list[str] | None = None
     sort_order: int = 0
+    file_allowed_types: list[str] | None = None
+
+    @field_validator("file_allowed_types")
+    @classmethod
+    def _file_types(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_file_mimes(v)
 
 
 class TemplateFormFieldOut(TemplateFormFieldIn):

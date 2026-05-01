@@ -14,7 +14,7 @@ import structlog
 from arq.connections import RedisSettings
 
 from app.config import settings
-from app.worker.tasks import parse_resume
+from app.worker.tasks import parse_resume, rank_applicant
 
 log = structlog.get_logger()
 
@@ -29,7 +29,7 @@ async def shutdown(ctx: dict) -> None:
 
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    functions = [parse_resume]
+    functions = [parse_resume, rank_applicant]
     on_startup = startup
     on_shutdown = shutdown
     queue_name = "recruitment:default"

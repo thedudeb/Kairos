@@ -16,6 +16,7 @@ from __future__ import annotations
 import io
 import json
 import traceback
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -24,14 +25,18 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.db import engine
-from app.models._base import ParseStatus
+from app.models._base import ParseStatus, RankStatus
 from app.models.applicant import (
     Applicant,
+    ApplicantCustomFieldValue,
     ApplicantEducation,
+    ApplicantFitScore,
     ApplicantSkill,
     ApplicantWork,
     ParsedResume,
 )
+from app.models.job import Job, JobFormField
+from app.services import ranking as ranking_svc
 from app.services import storage as storage_svc
 
 log = structlog.get_logger()
@@ -145,7 +150,7 @@ def _download_resume(storage_path: str) -> bytes:
     raise ValueError(f"Unknown storage path scheme: {storage_path!r}")
 
 
-async def parse_resume(_ctx: dict, *, applicant_id: str) -> str:
+async def parse_resume(ctx: dict, *, applicant_id: str) -> str:
     """ARQ task: parse the resume for one applicant.
 
     Safe to re-queue: if already `parsed` we skip and return early.
@@ -236,14 +241,25 @@ async def parse_resume(_ctx: dict, *, applicant_id: str) -> str:
                     )
                 )
 
+            # Normalize skills: strip whitespace + dedupe case-insensitively while
+            # keeping the first-seen casing (so "AWS" stays "AWS", not "aws").
+            seen_lower: set[str] = set()
             for skill_str in parsed.get("skills", []):
-                if skill_str:
-                    session.add(
-                        ApplicantSkill(
-                            applicant_id=UUID(applicant_id),
-                            skill=str(skill_str)[:200],
-                        )
+                if not skill_str:
+                    continue
+                cleaned = str(skill_str).strip()[:200]
+                if not cleaned:
+                    continue
+                key = cleaned.lower()
+                if key in seen_lower:
+                    continue
+                seen_lower.add(key)
+                session.add(
+                    ApplicantSkill(
+                        applicant_id=UUID(applicant_id),
+                        skill=cleaned,
                     )
+                )
 
             # Mark done
             app_row = session.get(Applicant, UUID(applicant_id))
@@ -253,6 +269,14 @@ async def parse_resume(_ctx: dict, *, applicant_id: str) -> str:
                 session.add(app_row)
 
             session.commit()
+
+        # Chain: kick off the AI fit-score now that we have parsed data.
+        try:
+            redis = ctx.get("redis")
+            if redis is not None:
+                await redis.enqueue_job("rank_applicant", applicant_id=applicant_id)
+        except Exception:
+            log.exception("parse_resume.rank_enqueue_failed", applicant_id=applicant_id)
 
         log.info("parse_resume.success", applicant_id=applicant_id)
         return "ok"
@@ -270,3 +294,102 @@ async def parse_resume(_ctx: dict, *, applicant_id: str) -> str:
                 session.commit()
 
         return f"failed: {err_msg}"
+
+
+async def rank_applicant(_ctx: dict, *, applicant_id: str) -> str:
+    """ARQ task: ask Gemini to score how well this applicant fits the job.
+
+    Reads the parsed resume + custom field values + job description, calls the
+    ranking service, and upserts the ApplicantFitScore row. Always idempotent
+    (overwrites prior row).
+    """
+    log.info("rank_applicant.start", applicant_id=applicant_id)
+    aid = UUID(applicant_id)
+
+    # Mark in-progress and gather inputs
+    with Session(engine) as session:
+        applicant = session.get(Applicant, aid)
+        if applicant is None:
+            log.warning("rank_applicant.applicant_not_found", applicant_id=applicant_id)
+            return "applicant_not_found"
+
+        job = session.get(Job, applicant.job_id)
+        if job is None:
+            log.warning("rank_applicant.job_not_found", applicant_id=applicant_id)
+            return "job_not_found"
+
+        parsed = session.get(ParsedResume, aid)
+        if parsed is None or applicant.parse_status != ParseStatus.parsed:
+            # Resume not yet parsed — mark skipped; the parse task will re-enqueue
+            # this when parsing completes.
+            _upsert_score(session, aid, status=RankStatus.skipped, error="resume not parsed")
+            session.commit()
+            return "skipped_no_parse"
+
+        # Hydrate custom field values for richer signal
+        rows = session.exec(
+            select(ApplicantCustomFieldValue, JobFormField)
+            .join(JobFormField, JobFormField.id == ApplicantCustomFieldValue.job_form_field_id)
+            .where(ApplicantCustomFieldValue.applicant_id == aid)
+        ).all()
+        custom_field_values = [
+            {"label": ff.label, "value": cfv.value_text or cfv.value_file_gcs_path}
+            for cfv, ff in rows
+        ]
+
+        job_title = job.title
+        job_description = job.description_md or ""
+        parsed_resume = parsed.raw_json or {}
+
+        # Mark in-progress
+        _upsert_score(session, aid, status=RankStatus.ranking, error=None)
+        session.commit()
+
+    # Call Gemini outside the DB session
+    try:
+        result = ranking_svc.score_applicant(
+            job_title=job_title,
+            job_description=job_description,
+            parsed_resume=parsed_resume,
+            custom_field_values=custom_field_values,
+        )
+    except Exception as exc:
+        log.exception("rank_applicant.failed", applicant_id=applicant_id)
+        with Session(engine) as session:
+            _upsert_score(session, aid, status=RankStatus.failed, error=str(exc)[:1900])
+            session.commit()
+        return f"failed: {exc}"
+
+    if result is None:
+        with Session(engine) as session:
+            _upsert_score(session, aid, status=RankStatus.skipped, error="gemini key missing or job description empty")
+            session.commit()
+        return "skipped"
+
+    with Session(engine) as session:
+        _upsert_score(
+            session,
+            aid,
+            status=RankStatus.done,
+            fit_score=result.get("fit_score"),
+            skills_match=result.get("skills_match"),
+            experience_match=result.get("experience_match"),
+            trajectory=result.get("trajectory"),
+            reasoning=result.get("reasoning"),
+            model=result.get("model"),
+            generated_at=datetime.now(timezone.utc),
+            error=None,
+        )
+        session.commit()
+
+    log.info("rank_applicant.success", applicant_id=applicant_id, fit=result.get("fit_score"))
+    return "ok"
+
+
+def _upsert_score(session: Session, applicant_id: UUID, **fields: Any) -> None:
+    row = session.get(ApplicantFitScore, applicant_id)
+    if row is None:
+        row = ApplicantFitScore(applicant_id=applicant_id)
+    for k, v in fields.items():
+        setattr(row, k, v)
+    session.add(row)

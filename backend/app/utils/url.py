@@ -36,3 +36,13 @@ def assert_safe_webhook_url(url: str) -> None:
                     )
         except (socket.gaierror, OSError):
             pass  # DNS failure is handled at delivery time
+
+
+def assert_https_document_url(url: str) -> None:
+    """Raise ValueError if *url* is not a valid HTTPS URL (public job description link)."""
+    try:
+        parsed = HttpUrl(url)
+    except Exception as exc:
+        raise ValueError("Invalid URL.") from exc
+    if parsed.scheme != "https":
+        raise ValueError("URL must use HTTPS.")

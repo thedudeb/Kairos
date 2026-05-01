@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 from app.db import get_session
 from app.models.applicant import Applicant, ParsedResume
 from app.models.pipeline import PipelineStage
-from app.security import require_admin
+from app.security import require_staff
 
 router = APIRouter(prefix="/jobs/{job_id}/export", tags=["export"])
 
@@ -32,7 +32,7 @@ def _csv(v: str | None) -> str:
 def export_applicants_csv(
     job_id: UUID,
     session: Session = Depends(get_session),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_staff),
 ) -> StreamingResponse:
     applicants = session.exec(
         select(Applicant)

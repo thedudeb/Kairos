@@ -17,7 +17,7 @@ from app.db import get_session
 from app.models.integration import JobIntegration, WebhookDelivery
 from app.models.job import Job
 from app.models.pipeline import PipelineStage
-from app.security import require_admin
+from app.security import require_admin, require_staff
 from app.models.user import User
 from app.services.webhook import (
     decrypt_api_key,
@@ -155,7 +155,7 @@ def _to_out(
 def list_integrations(
     job_id: UUID,
     session: Session = Depends(get_session),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_staff),
 ) -> list[IntegrationOut]:
     _get_job_or_404(session, job_id)
     rows = session.exec(
@@ -244,7 +244,7 @@ def list_deliveries(
     job_id: UUID,
     integration_id: UUID,
     session: Session = Depends(get_session),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_staff),
 ) -> list[DeliveryOut]:
     integ = session.get(JobIntegration, integration_id)
     if not integ or integ.job_id != job_id:

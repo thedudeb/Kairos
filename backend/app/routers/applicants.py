@@ -1,6 +1,7 @@
 """Admin applicant management endpoints.
 
-All routes require an authenticated admin or reviewer (require_admin dependency).
+Read routes (list, detail, resume PDF, skills) allow admin or reviewer.
+Mutations (stage move, notes, re-parse, parsed corrections) require admin.
 """
 from __future__ import annotations
 
@@ -15,11 +16,12 @@ from sqlalchemy import cast, func, or_, Text
 from sqlmodel import Session, select
 
 from app.db import get_session
-from app.models._base import ParseStatus
+from app.models._base import ParseStatus, RankStatus
 from app.models.applicant import (
     Applicant,
     ApplicantCustomFieldValue,
     ApplicantEducation,
+    ApplicantFitScore,
     ApplicantNote,
     ApplicantSkill,
     ApplicantWork,
@@ -34,6 +36,7 @@ from app.schemas.applicant import (
     ApplicantListItem,
     CustomFieldValueOut,
     EducationOut,
+    FitScoreOut,
     NoteCreate,
     NoteOut,
     ParsedResumeCorrection,
@@ -42,9 +45,9 @@ from app.schemas.applicant import (
     StageMoveRequest,
     WorkOut,
 )
-from app.security import require_admin
+from app.security import require_admin, require_staff
 from app.services import storage as storage_svc
-from app.services.webhook import fire_webhook, trigger_integrations_for_transition
+from app.services.webhook import deliver_with_retry, trigger_integrations_for_transition
 
 log = structlog.get_logger()
 
@@ -244,9 +247,13 @@ def _build_activity(
 def list_skills(
     job_id: UUID,
     session: Session = Depends(get_session),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_staff),
 ) -> list[str]:
-    """Return sorted list of unique skills present in this job's applicant pool."""
+    """Return sorted list of unique skills present in this job's applicant pool.
+
+    Dedupes case-insensitively (keeps the first-seen casing) so historical
+    data with mixed cases (e.g. "Python" + "python") collapses into one entry.
+    """
     _get_job_or_404(session, job_id)
     rows = session.execute(
         select(ApplicantSkill.skill)
@@ -255,7 +262,17 @@ def list_skills(
         .distinct()
         .order_by(ApplicantSkill.skill)
     ).scalars().all()
-    return list(rows)
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for s in rows:
+        key = s.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(s.strip())
+    out.sort(key=str.lower)
+    return out
 
 
 # ─── List applicants ──────────────────────────────────────────────────────────
@@ -264,7 +281,7 @@ def list_skills(
 def list_applicants(
     job_id: UUID,
     session: Session = Depends(get_session),
-    current_user: User = Depends(require_admin),
+    _: User = Depends(require_staff),
     # Filtering
     stage_id: UUID | None = Query(default=None),
     parse_status: ParseStatus | None = Query(default=None),
@@ -276,7 +293,7 @@ def list_applicants(
     search: str | None = Query(default=None, max_length=200),
     # Sorting
     sort_by: Literal[
-        "submitted_at", "last_name", "top_institution", "top_degree", "current_stage_id"
+        "submitted_at", "last_name", "top_institution", "top_degree", "current_stage_id", "fit_score"
     ] = Query(default="submitted_at"),
     sort_dir: Literal["asc", "desc"] = Query(default="desc"),
     # Pagination
@@ -285,10 +302,11 @@ def list_applicants(
 ) -> list[ApplicantListItem]:
     _get_job_or_404(session, job_id)
 
-    # Join ParsedResume for filter/sort on parsed fields
+    # Join ParsedResume + fit score for filter/sort/display
     q = (
-        select(Applicant, ParsedResume)
+        select(Applicant, ParsedResume, ApplicantFitScore)
         .outerjoin(ParsedResume, ParsedResume.applicant_id == Applicant.id)
+        .outerjoin(ApplicantFitScore, ApplicantFitScore.applicant_id == Applicant.id)
         .where(Applicant.job_id == job_id)
     )
 
@@ -378,16 +396,28 @@ def list_applicants(
             )
         )
 
+    primary_inst_subq = (
+        select(ApplicantEducation.institution)
+        .where(ApplicantEducation.applicant_id == Applicant.id)
+        .order_by(ApplicantEducation.sort_order.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
     # Sorting — ParsedResume columns need the join above
     sort_col_map = {
         "submitted_at": Applicant.submitted_at,
         "last_name": Applicant.last_name,
-        "top_institution": ParsedResume.top_institution,
+        "fit_score": ApplicantFitScore.fit_score,
+        "top_institution": func.coalesce(ParsedResume.top_institution, primary_inst_subq),
         "top_degree": ParsedResume.top_degree,
         "current_stage_id": Applicant.current_stage_id,
     }
     sort_col = sort_col_map.get(sort_by, Applicant.submitted_at)
-    if sort_dir == "asc":
+    if sort_by == "fit_score":
+        # Always show highest-fit first; null scores last regardless of dir.
+        q = q.order_by(sort_col.desc().nullslast(), Applicant.submitted_at.desc())
+    elif sort_dir == "asc":
         q = q.order_by(sort_col.asc())
     else:
         q = q.order_by(sort_col.desc())
@@ -399,7 +429,7 @@ def list_applicants(
     stage_cache: dict[UUID, str] = {}
 
     result = []
-    for a, pr in rows:
+    for a, pr, fs in rows:
         if a.current_stage_id not in stage_cache:
             stage_cache[a.current_stage_id] = _stage_name(session, a.current_stage_id)
         result.append(
@@ -417,6 +447,8 @@ def list_applicants(
                 submitted_at=a.submitted_at,
                 stage_entered_at=a.stage_entered_at,
                 resume_url=_resume_url(a.resume_gcs_path),
+                fit_score=fs.fit_score if fs else None,
+                fit_status=fs.status if fs else None,
             )
         )
     return result
@@ -429,10 +461,11 @@ def get_applicant(
     job_id: UUID,
     applicant_id: UUID,
     session: Session = Depends(get_session),
-    current_user: User = Depends(require_admin),
+    _: User = Depends(require_staff),
 ) -> ApplicantDetail:
     applicant = _get_applicant_or_404(session, applicant_id, job_id)
 
+    fs = session.get(ApplicantFitScore, applicant.id)
     return ApplicantDetail(
         id=applicant.id,
         job_id=applicant.job_id,
@@ -452,6 +485,9 @@ def get_applicant(
         custom_fields=_build_custom_fields(session, applicant.id),
         notes=_build_notes(session, applicant.id),
         activity=_build_activity(session, applicant),
+        fit_score=fs.fit_score if fs else None,
+        fit_status=fs.status if fs else None,
+        fit_score_detail=FitScoreOut.model_validate(fs) if fs else None,
     )
 
 
@@ -460,10 +496,9 @@ def download_resume_pdf(
     job_id: UUID,
     applicant_id: UUID,
     session: Session = Depends(get_session),
-    current_user: User = Depends(require_admin),
+    _: User = Depends(require_staff),
 ) -> Response:
     """Return raw PDF bytes for inline viewing (browser PDF.js). Auth required."""
-    del current_user  # enforced by dependency
     _get_job_or_404(session, job_id)
     applicant = _get_applicant_or_404(session, applicant_id, job_id)
 
@@ -553,10 +588,9 @@ def move_stage(
     )
     for iid in integration_ids:
         background_tasks.add_task(
-            fire_webhook,
+            deliver_with_retry,
             transition_id=transition.id,
             integration_id=iid,
-            is_manual_retry=False,
         )
 
     return get_applicant(job_id, applicant_id, session, current_user)
@@ -672,6 +706,34 @@ async def reparse_resume(
     return {"queued": False, "note": "Redis unavailable; set REDIS_URL to enable background parsing"}
 
 
+# ─── Re-rank (AI fit score) ────────────────────────────────────────────────────
+
+@router.post("/{applicant_id}/rerank", status_code=202)
+async def rerank_applicant(
+    job_id: UUID,
+    applicant_id: UUID,
+    request: Request,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+) -> dict:
+    applicant = _get_applicant_or_404(session, applicant_id, job_id)
+
+    score = session.get(ApplicantFitScore, applicant.id)
+    if score is None:
+        score = ApplicantFitScore(applicant_id=applicant.id)
+    score.status = RankStatus.pending
+    score.error = None
+    session.add(score)
+    session.commit()
+
+    pool = getattr(getattr(request, "app", None), "state", None)
+    pool = getattr(pool, "arq_pool", None) if pool else None
+    if pool:
+        await pool.enqueue_job("rank_applicant", applicant_id=str(applicant_id))
+        return {"queued": True}
+    return {"queued": False, "note": "Redis unavailable"}
+
+
 # ─── Manual resume correction ──────────────────────────────────────────────────
 
 @router.patch("/{applicant_id}/parsed-resume", response_model=ParsedResumeOut)
@@ -711,10 +773,54 @@ def correct_parsed_resume(
         ).all()
         for s in existing:
             session.delete(s)
+        seen: set[str] = set()
         for skill_name in body.skills:
-            s = skill_name.strip()
-            if s:
-                session.add(ApplicantSkill(applicant_id=applicant_id, skill=s))
+            cleaned = skill_name.strip()[:200]
+            if not cleaned:
+                continue
+            key = cleaned.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            session.add(ApplicantSkill(applicant_id=applicant_id, skill=cleaned))
+
+    # Replace education entries if provided
+    if body.education is not None:
+        for e in session.exec(
+            select(ApplicantEducation).where(ApplicantEducation.applicant_id == applicant_id)
+        ).all():
+            session.delete(e)
+        for i, edu in enumerate(body.education):
+            session.add(
+                ApplicantEducation(
+                    applicant_id=applicant_id,
+                    institution=(edu.institution or None),
+                    degree=(edu.degree or None),
+                    field_of_study=(edu.field_of_study or None),
+                    start_year=edu.start_year,
+                    end_year=edu.end_year,
+                    sort_order=i,
+                )
+            )
+
+    # Replace work entries if provided
+    if body.work is not None:
+        for w in session.exec(
+            select(ApplicantWork).where(ApplicantWork.applicant_id == applicant_id)
+        ).all():
+            session.delete(w)
+        for i, work in enumerate(body.work):
+            session.add(
+                ApplicantWork(
+                    applicant_id=applicant_id,
+                    company=(work.company or None),
+                    title=(work.title or None),
+                    start_date=(work.start_date or None),
+                    end_date=(work.end_date or None),
+                    description=(work.description or None),
+                    sort_order=i,
+                )
+            )
 
     # Mark as manually corrected
     applicant.parse_status = ParseStatus.needs_manual

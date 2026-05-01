@@ -11,7 +11,7 @@ from uuid import UUID
 from sqlalchemy import JSON, Column, String
 from sqlmodel import Field, SQLModel
 
-from app.models._base import FieldType, JobStatus, TimestampMixin, uuid_pk
+from app.models._base import FieldType, JobDescriptionKind, JobStatus, TimestampMixin, uuid_pk
 
 
 class Job(TimestampMixin, SQLModel, table=True):
@@ -21,6 +21,15 @@ class Job(TimestampMixin, SQLModel, table=True):
     title: str = Field(max_length=200)
     slug: str = Field(sa_column=Column(String(200), unique=True, nullable=False, index=True))
     description_md: str = Field(default="", sa_column=Column(String, nullable=False))
+    description_kind: JobDescriptionKind = Field(
+        default=JobDescriptionKind.markdown,
+        sa_column=Column(String(32), nullable=False, server_default="markdown"),
+    )
+    description_external_url: str | None = Field(default=None, max_length=2000)
+    description_summary: str | None = Field(
+        default=None,
+        sa_column=Column(String, nullable=True),
+    )
     status: JobStatus = Field(default=JobStatus.draft, index=True)
     template_id: UUID | None = Field(default=None, foreign_key="templates.id")
     created_by_id: UUID | None = Field(default=None, foreign_key="users.id")
@@ -35,6 +44,10 @@ class JobFormField(SQLModel, table=True):
     field_type: FieldType
     is_required: bool = Field(default=False)
     options: list[str] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    file_allowed_types: list[str] | None = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True),
+    )
     sort_order: int = Field(default=0)
 
 

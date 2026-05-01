@@ -17,6 +17,7 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.db import get_session
+from app.models._base import Role
 from app.models.user import User
 
 ALGO = settings.jwt_algorithm
@@ -74,8 +75,15 @@ def get_current_user(
     return user
 
 
+def require_staff(user: User = Depends(get_current_user)) -> User:
+    """Admin or reviewer — read-only staff can access job workspace data."""
+    if user.role not in (Role.admin, Role.reviewer):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "staff role required")
+    return user
+
+
 def require_admin(user: User = Depends(get_current_user)) -> User:
-    if user.role != "admin":
+    if user.role != Role.admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "admin role required")
     return user
 

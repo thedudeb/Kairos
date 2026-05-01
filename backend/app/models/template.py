@@ -30,6 +30,10 @@ class TemplateFormField(SQLModel, table=True):
         default=None,
         sa_column=Column(JSON, nullable=True),
     )
+    file_allowed_types: list[str] | None = Field(
+        default=None,
+        sa_column=Column(JSON, nullable=True),
+    )
     sort_order: int = Field(default=0)
 
 

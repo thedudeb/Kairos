@@ -14,7 +14,7 @@ from uuid import UUID
 from sqlalchemy import JSON, Column, DateTime, String, UniqueConstraint, func
 from sqlmodel import Field, SQLModel
 
-from app.models._base import ParseStatus, TimestampMixin, uuid_pk
+from app.models._base import ParseStatus, RankStatus, TimestampMixin, uuid_pk
 
 
 class Applicant(TimestampMixin, SQLModel, table=True):
@@ -118,3 +118,23 @@ class ApplicantNote(TimestampMixin, SQLModel, table=True):
     applicant_id: UUID = Field(foreign_key="applicants.id", nullable=False, index=True)
     author_id: UUID = Field(foreign_key="users.id", nullable=False)
     body: str
+
+
+class ApplicantFitScore(SQLModel, table=True):
+    """1:1 AI-generated fit score for an applicant against the job they applied to."""
+
+    __tablename__ = "applicant_fit_scores"
+
+    applicant_id: UUID = Field(foreign_key="applicants.id", primary_key=True)
+    status: RankStatus = Field(default=RankStatus.pending, index=True)
+    fit_score: int | None = Field(default=None, index=True)         # 0-100
+    skills_match: int | None = Field(default=None)                  # 0-100
+    experience_match: int | None = Field(default=None)              # 0-100
+    trajectory: int | None = Field(default=None)                    # 0-100
+    reasoning: str | None = Field(default=None)
+    model: str | None = Field(default=None, max_length=100)
+    error: str | None = Field(default=None, max_length=2000)
+    generated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+    )

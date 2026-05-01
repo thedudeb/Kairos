@@ -17,7 +17,7 @@ from app.db import get_session
 from app.models.applicant import Applicant
 from app.models.pipeline import PipelineStage
 from app.models.job import Job
-from app.security import require_admin
+from app.security import require_admin, require_staff
 from app.models.user import User
 
 log = structlog.get_logger()
@@ -93,7 +93,7 @@ def _to_out(stage: PipelineStage, counts: dict[UUID, int]) -> StageOut:
 def list_stages(
     job_id: UUID,
     session: Session = Depends(get_session),
-    _: User = Depends(require_admin),
+    _: User = Depends(require_staff),
 ) -> list[StageOut]:
     _get_job_or_404(session, job_id)
     stages = session.exec(

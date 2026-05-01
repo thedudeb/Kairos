@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models._base import FieldType, JobStatus
+from app.models._base import FieldType, JobDescriptionKind, JobStatus
 
 
 class PublicFormField(BaseModel):
@@ -16,6 +16,7 @@ class PublicFormField(BaseModel):
     is_required: bool
     options: list[str] | None
     sort_order: int
+    file_allowed_types: list[str] | None = None
 
 
 class PublicJobResponse(BaseModel):
@@ -24,6 +25,9 @@ class PublicJobResponse(BaseModel):
     slug: str
     status: JobStatus
     description_md: str
+    description_kind: JobDescriptionKind
+    description_external_url: str | None
+    description_summary: str | None
     form_fields: list[PublicFormField]
 
 

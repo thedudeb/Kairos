@@ -8,11 +8,17 @@ Each webhook call:
 Idempotency: the unique constraint (transition_id, integration_id, attempt_number)
 prevents double-firing. Manual retries use is_manual_retry=True and a fresh
 attempt number.
+
+Auto-retry: on transient failure (5xx, timeout, network error) the wrapper
+`deliver_with_retry` re-fires after 5s, then 30s. Permanent failures (4xx
+other than 408/429) are not retried — the receiver explicitly rejected
+the payload, so retrying won't help.
 """
 from __future__ import annotations
 
 import base64
 import hashlib
+import time
 import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -148,19 +154,44 @@ def _build_payload(
 
 # ─── Delivery ─────────────────────────────────────────────────────────────────
 
+# Auto-retry schedule: initial fire is immediate; on transient failure we wait
+# these many seconds before each subsequent attempt. Three total attempts.
+_AUTO_RETRY_DELAYS_SECONDS = (5, 30)
+
+
+def _is_transient_status(status_code: int) -> bool:
+    """Return True if a non-2xx response should be retried.
+
+    5xx are server errors (worth retrying). 408 (timeout) and 429 (rate-limited)
+    are explicitly retryable. Everything else in 4xx means the receiver
+    rejected the payload — retrying won't help.
+    """
+    if status_code >= 500:
+        return True
+    if status_code in (408, 429):
+        return True
+    return False
+
+
 def fire_webhook(
     *,
     transition_id: UUID,
     integration_id: UUID,
     is_manual_retry: bool = False,
-) -> None:
-    """Deliver the webhook synchronously (called from a background task)."""
+) -> tuple[bool, bool]:
+    """Deliver the webhook synchronously. Records one WebhookDelivery row.
+
+    Returns:
+        (success, is_transient) — `is_transient` is only meaningful when
+        success is False, and indicates whether an auto-retry would be
+        worthwhile.
+    """
     with Session(engine) as session:
         transition = session.get(StageTransition, transition_id)
         integration = session.get(JobIntegration, integration_id)
 
         if not transition or not integration or not integration.is_active:
-            return
+            return True, False  # nothing to do; treat as success
 
         # Determine attempt number
         existing = session.execute(
@@ -186,7 +217,7 @@ def fire_webhook(
                 url=integration.endpoint_url,
                 reason=str(exc),
             )
-            return
+            return False, False  # SSRF block is permanent
 
         delivery = WebhookDelivery(
             transition_id=transition_id,
@@ -196,6 +227,8 @@ def fire_webhook(
             request_payload=payload,
         )
 
+        success = False
+        is_transient = False
         try:
             resp = httpx.post(
                 integration.endpoint_url,
@@ -209,21 +242,74 @@ def fire_webhook(
             )
             delivery.response_status = resp.status_code
             delivery.response_body = resp.text[:2000]
+            success = 200 <= resp.status_code < 300
+            is_transient = (not success) and _is_transient_status(resp.status_code)
             log.info(
                 "webhook.delivered",
                 integration_id=str(integration_id),
                 status=resp.status_code,
+                attempt=attempt_number,
+            )
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError) as exc:
+            # Transport-layer failures are always retryable
+            delivery.error = traceback.format_exc()[-1900:]
+            is_transient = True
+            log.warning(
+                "webhook.transient_error",
+                integration_id=str(integration_id),
+                attempt=attempt_number,
+                error=str(exc),
             )
         except Exception as exc:
             delivery.error = traceback.format_exc()[-1900:]
             log.warning(
                 "webhook.failed",
                 integration_id=str(integration_id),
+                attempt=attempt_number,
                 error=str(exc),
             )
 
         session.add(delivery)
         session.commit()
+
+        return success, is_transient
+
+
+def deliver_with_retry(
+    *,
+    transition_id: UUID,
+    integration_id: UUID,
+) -> None:
+    """BackgroundTask entry point: initial fire + transient-failure auto-retries.
+
+    Manual admin retries call `fire_webhook` directly (no auto-retry chain) so
+    the admin remains in control.
+    """
+    success, is_transient = fire_webhook(
+        transition_id=transition_id,
+        integration_id=integration_id,
+        is_manual_retry=False,
+    )
+    if success:
+        return
+
+    for delay_s in _AUTO_RETRY_DELAYS_SECONDS:
+        if not is_transient:
+            return  # permanent failure — stop retrying
+        time.sleep(delay_s)
+        success, is_transient = fire_webhook(
+            transition_id=transition_id,
+            integration_id=integration_id,
+            is_manual_retry=False,
+        )
+        if success:
+            return
+
+    log.warning(
+        "webhook.auto_retry_exhausted",
+        transition_id=str(transition_id),
+        integration_id=str(integration_id),
+    )
 
 
 def trigger_integrations_for_transition(

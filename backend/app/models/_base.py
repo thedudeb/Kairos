@@ -43,6 +43,11 @@ class Role(StrEnum):
     reviewer = "reviewer"
 
 
+class JobDescriptionKind(StrEnum):
+    markdown = "markdown"
+    external = "external"
+
+
 class JobStatus(StrEnum):
     draft = "draft"
     active = "active"
@@ -66,3 +71,11 @@ class ParseStatus(StrEnum):
     parsed = "parsed"
     failed = "failed"
     needs_manual = "needs_manual"
+
+
+class RankStatus(StrEnum):
+    pending = "pending"
+    ranking = "ranking"
+    done = "done"
+    failed = "failed"
+    skipped = "skipped"  # JD missing or resume unparsed

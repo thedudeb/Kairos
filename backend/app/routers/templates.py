@@ -16,7 +16,7 @@ from app.schemas.template import (
     TemplateSummary,
     TemplateUpdate,
 )
-from app.security import require_admin
+from app.security import require_admin, require_staff
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 
@@ -92,7 +92,7 @@ def _replace_fields(
 @router.get("/", response_model=list[TemplateSummary])
 def list_templates(
     session: Session = Depends(get_session),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_staff),
 ) -> list[TemplateSummary]:
     templates = session.exec(select(Template).order_by(Template.name)).all()
     return [TemplateSummary.model_validate(t) for t in templates]
@@ -118,7 +118,7 @@ def create_template(
 def get_template(
     template_id: UUID,
     session: Session = Depends(get_session),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_staff),
 ) -> TemplateOut:
     return _fetch_full(session, _get_or_404(session, template_id))
 
@@ -202,6 +202,7 @@ def duplicate_template(
                 field_type=f.field_type,
                 is_required=f.is_required,
                 options=f.options,
+                file_allowed_types=f.file_allowed_types,
                 sort_order=f.sort_order,
             )
         )

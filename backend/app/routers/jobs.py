@@ -4,13 +4,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import case, func
 from sqlmodel import Session, select
 
 from app.db import get_session
-from app.models._base import JobStatus
-from app.models.applicant import Applicant
+from app.models._base import JobDescriptionKind, JobStatus, RankStatus
+from app.models.applicant import Applicant, ApplicantFitScore
 from app.models.job import Job, JobAssessmentQuestion, JobFormField
 from app.models.pipeline import PipelineStage
 from app.models.template import Template, TemplateAssessmentQuestion, TemplateFormField
@@ -26,8 +26,8 @@ from app.schemas.job import (
     JobUpdate,
     StageDistributionItem,
 )
-from app.security import require_admin
-from app.utils.slug import unique_job_slug, validate_slug
+from app.security import require_admin, require_staff
+from app.utils.url import assert_https_document_url
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -109,6 +109,9 @@ def _fetch_full(session: Session, job: Job) -> JobOut:
         title=job.title,
         slug=job.slug,
         description_md=job.description_md,
+        description_kind=job.description_kind,
+        description_external_url=job.description_external_url,
+        description_summary=job.description_summary,
         status=job.status,
         template_id=job.template_id,
         created_at=job.created_at,
@@ -191,6 +194,7 @@ def _snapshot_template(session: Session, job: Job, template_id: UUID) -> None:
                 field_type=f.field_type,
                 is_required=f.is_required,
                 options=f.options,
+                file_allowed_types=f.file_allowed_types,
                 sort_order=f.sort_order,
             )
         )
@@ -212,7 +216,7 @@ def _snapshot_template(session: Session, job: Job, template_id: UUID) -> None:
 @router.get("/", response_model=list[JobListItem])
 def list_jobs(
     session: Session = Depends(get_session),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_staff),
 ) -> list[JobListItem]:
     jobs = session.exec(select(Job).order_by(Job.created_at.desc())).all()
     return [
@@ -250,9 +254,23 @@ def create_job(
         title=payload.title,
         slug=slug,
         description_md=payload.description_md,
+        description_kind=payload.description_kind,
+        description_external_url=payload.description_external_url,
+        description_summary=payload.description_summary,
         status=payload.status,
         created_by_id=admin.id,
     )
+    if job.description_kind == JobDescriptionKind.external:
+        if not job.description_external_url:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "description_external_url is required when description_kind is external",
+            )
+        try:
+            assert_https_document_url(job.description_external_url)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
     session.add(job)
     session.flush()
 
@@ -270,7 +288,7 @@ def create_job(
 def get_job(
     job_id: UUID,
     session: Session = Depends(get_session),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_staff),
 ) -> JobOut:
     return _fetch_full(session, _get_or_404(session, job_id))
 
@@ -302,6 +320,23 @@ def update_job(
 
     if payload.description_md is not None:
         job.description_md = payload.description_md
+    if payload.description_kind is not None:
+        job.description_kind = payload.description_kind
+    if payload.description_external_url is not None:
+        job.description_external_url = payload.description_external_url
+    if payload.description_summary is not None:
+        job.description_summary = payload.description_summary
+
+    if job.description_kind == JobDescriptionKind.external:
+        if not job.description_external_url:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "External job description requires description_external_url (HTTPS).",
+            )
+        try:
+            assert_https_document_url(job.description_external_url)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
     session.add(job)
 
@@ -382,7 +417,7 @@ def replace_assessment_questions(
 def list_pipeline_stages(
     job_id: UUID,
     session: Session = Depends(get_session),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_staff),
 ) -> list[dict]:
     _get_or_404(session, job_id)
     stages = session.exec(
@@ -419,3 +454,36 @@ def delete_job(
             session.delete(row)
     session.delete(job)
     session.commit()
+
+
+@router.post("/{job_id}/rerank-all", status_code=202)
+async def rerank_all_applicants(
+    job_id: UUID,
+    request: Request,
+    session: Session = Depends(get_session),
+    _: object = Depends(require_admin),
+) -> dict:
+    """Re-score every applicant in this job — useful after editing the description."""
+    _get_or_404(session, job_id)
+
+    applicant_ids = [
+        a.id for a in session.exec(select(Applicant).where(Applicant.job_id == job_id)).all()
+    ]
+    # Mark all as pending so the UI shows the spinner
+    for aid in applicant_ids:
+        score = session.get(ApplicantFitScore, aid)
+        if score is None:
+            score = ApplicantFitScore(applicant_id=aid)
+        score.status = RankStatus.pending
+        score.error = None
+        session.add(score)
+    session.commit()
+
+    pool = getattr(getattr(request, "app", None), "state", None)
+    pool = getattr(pool, "arq_pool", None) if pool else None
+    queued = 0
+    if pool:
+        for aid in applicant_ids:
+            await pool.enqueue_job("rank_applicant", applicant_id=str(aid))
+            queued += 1
+    return {"queued": queued, "total": len(applicant_ids)}

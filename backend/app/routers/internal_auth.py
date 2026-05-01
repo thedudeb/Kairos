@@ -1,9 +1,7 @@
 """Server-to-server endpoint called by Auth.js after a successful sign-in.
 
-Handles the env-var bootstrap: the first user matching INITIAL_ADMIN_EMAIL
-is granted role=admin on first sign-in. Subsequent users are also created
-with role=admin in the MVP (single-role); a future invite flow can flip
-this to default to `reviewer` instead.
+Handles env-var bootstrap (`INITIAL_ADMIN_EMAIL`), pending `UserInvite` rows,
+and first-user demo access.
 """
 from __future__ import annotations
 
@@ -13,7 +11,7 @@ from sqlmodel import Session, func, select
 from app.config import settings
 from app.db import get_session
 from app.models._base import Role
-from app.models.user import User
+from app.models.user_invite import UserInvite
 from app.schemas.auth import UserOut, UserSyncRequest, UserSyncResponse
 from app.security import issue_session_token, require_internal_api_key
 
@@ -32,10 +30,19 @@ def sync_user(
     user = session.exec(select(User).where(User.email == payload.email)).first()
 
     if user is None:
-        is_first_user = session.exec(select(func.count()).select_from(User)).one() == 0
-        is_bootstrap_admin = payload.email.lower() == settings.initial_admin_email.lower()
-        is_demo = payload.email.lower() == "demo@kairos.app"
-        role = Role.admin if (is_bootstrap_admin or is_first_user or is_demo) else Role.reviewer
+        em = payload.email.lower().strip()
+        invite = session.exec(
+            select(UserInvite).where(func.lower(UserInvite.email) == em)
+        ).first()
+        if invite:
+            role = invite.role
+            session.delete(invite)
+            session.flush()
+        else:
+            is_first_user = session.exec(select(func.count()).select_from(User)).one() == 0
+            is_bootstrap_admin = em == settings.initial_admin_email.lower()
+            is_demo = em == "demo@kairos.app"
+            role = Role.admin if (is_bootstrap_admin or is_first_user or is_demo) else Role.reviewer
 
         user = User(
             email=payload.email,

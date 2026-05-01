@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     email_from: str = "Recruiting <hello@example.com>"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-pro"
+    gemini_ranking_model: str = "gemini-2.5-flash"
 
     # --- Behavior ---------------------------------------------------------
     jwt_algorithm: str = "HS256"

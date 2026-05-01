@@ -14,7 +14,7 @@ from app.db import get_session
 from app.models._base import ParseStatus
 from app.models.applicant import Applicant, ParsedResume
 from app.models.pipeline import PipelineStage
-from app.security import require_admin
+from app.security import require_admin, require_staff
 
 router = APIRouter(prefix="/jobs/{job_id}/analytics", tags=["analytics"])
 
@@ -49,7 +49,7 @@ class AnalyticsOut(BaseModel):
 def get_analytics(
     job_id: UUID,
     session: Session = Depends(get_session),
-    _: object = Depends(require_admin),
+    _: object = Depends(require_staff),
     volume_days: int | None = Query(
         default=None,
         ge=7,

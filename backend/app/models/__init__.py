@@ -5,6 +5,7 @@ parents must be importable. SQLModel handles deferred resolution but we
 explicitly import everything here for clarity.
 """
 from app.models.user import User  # noqa: F401
+from app.models.user_invite import UserInvite  # noqa: F401
 from app.models.template import (  # noqa: F401
     Template,
     TemplateAssessmentQuestion,
@@ -23,6 +24,7 @@ from app.models.applicant import (  # noqa: F401
     Applicant,
     ApplicantCustomFieldValue,
     ApplicantEducation,
+    ApplicantFitScore,
     ApplicantNote,
     ApplicantSkill,
     ApplicantWork,

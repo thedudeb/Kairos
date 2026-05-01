@@ -86,6 +86,9 @@ def get_public_job(slug: str, session: Session = Depends(get_session)) -> Public
         slug=job.slug,
         status=job.status,
         description_md=job.description_md,
+        description_kind=job.description_kind,
+        description_external_url=job.description_external_url,
+        description_summary=job.description_summary,
         form_fields=[PublicFormField.model_validate(f) for f in form_fields],
     )
 
@@ -240,10 +243,15 @@ async def submit_application(
                             f"Uploaded file exceeds maximum size of {_MAX_CUSTOM_FILE_BYTES // 1024 // 1024} MB.",
                         )
                     file_ct = raw.content_type or "application/octet-stream"
-                    if file_ct not in _ALLOWED_CUSTOM_TYPES:
+                    allowed_mimes = (
+                        _ALLOWED_CUSTOM_TYPES
+                        if not field.file_allowed_types
+                        else frozenset(field.file_allowed_types)
+                    )
+                    if file_ct not in allowed_mimes:
                         raise HTTPException(
                             status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            "File type not allowed. Accepted: PDF, JPEG, PNG, WEBP, DOC, DOCX.",
+                            "File type not allowed for this field.",
                         )
                     # Validate magic bytes — don't trust client-supplied Content-Type
                     magic_sigs = _CUSTOM_MAGIC.get(file_ct, [])
