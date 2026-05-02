@@ -172,10 +172,11 @@ async def parse_resume(ctx: dict, *, applicant_id: str) -> str:
         applicant.parse_attempts += 1
         session.add(applicant)
         session.commit()
+        resume_gcs_path = applicant.resume_gcs_path  # capture before session closes
 
     try:
         # 1. Download
-        resume_bytes = _download_resume(applicant.resume_gcs_path)
+        resume_bytes = _download_resume(resume_gcs_path)
 
         # 2. Extract text
         resume_text = _extract_text(resume_bytes)
