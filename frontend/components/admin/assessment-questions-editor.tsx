@@ -22,6 +22,12 @@ import type { AssessmentQuestionItem } from "@/types/api";
 
 type DraftQuestion = Omit<AssessmentQuestionItem, "sort_order">;
 
+function withoutSortOrder(item: AssessmentQuestionItem): DraftQuestion {
+  const { sort_order, ...rest } = item;
+  void sort_order;
+  return rest;
+}
+
 interface AssessmentQuestionsEditorProps {
   initialQuestions: AssessmentQuestionItem[];
   onChange: (questions: DraftQuestion[]) => void;
@@ -43,7 +49,7 @@ export function AssessmentQuestionsEditor({
   readOnly = false,
 }: AssessmentQuestionsEditorProps) {
   const [questions, setQuestions] = useState<DraftQuestion[]>(() =>
-    initialQuestions.map(({ sort_order: _, ...q }) => q),
+    initialQuestions.map(withoutSortOrder),
   );
 
   const sensors = useSensors(

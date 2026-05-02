@@ -17,6 +17,12 @@ import type {
 
 type Tab = "fields" | "questions" | "preview";
 
+function withoutSortOrder<T extends { sort_order: number }>(item: T): Omit<T, "sort_order"> {
+  const { sort_order, ...rest } = item;
+  void sort_order;
+  return rest;
+}
+
 const DEFAULT_QUESTIONS: AssessmentQuestionItem[] = Array.from(
   { length: 4 },
   (_, i) => ({
@@ -44,10 +50,10 @@ export function TemplateEditor({
   const [description, setDescription] = useState(template?.description ?? "");
 
   const [fields, setFields] = useState<Omit<FormFieldItem, "sort_order">[]>(
-    template?.form_fields.map(({ sort_order: _, ...f }) => f) ?? [],
+    template?.form_fields.map(withoutSortOrder) ?? [],
   );
   const [questions, setQuestions] = useState<Omit<AssessmentQuestionItem, "sort_order">[]>(
-    template?.assessment_questions.map(({ sort_order: _, ...q }) => q) ??
+    template?.assessment_questions.map(withoutSortOrder) ??
       DEFAULT_QUESTIONS,
   );
 

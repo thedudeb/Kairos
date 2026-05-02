@@ -16,10 +16,9 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Plus, Trash2 } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { SortableItem } from "./sortable-item";
 import type { FieldType, FormFieldItem } from "@/types/api";
-import { cn } from "@/lib/utils";
 
 const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: "text", label: "Short text" },
@@ -43,6 +42,12 @@ const FILE_MIME_OPTIONS: { mime: string; label: string }[] = [
 
 type DraftField = Omit<FormFieldItem, "sort_order">;
 
+function withoutSortOrder(item: FormFieldItem): DraftField {
+  const { sort_order, ...rest } = item;
+  void sort_order;
+  return rest;
+}
+
 interface FormBuilderProps {
   initialFields: FormFieldItem[];
   /** Called whenever the internal field list changes. Parent should store and submit. */
@@ -64,10 +69,8 @@ function newField(): DraftField {
 
 export function FormBuilder({ initialFields, onChange, readOnly = false }: FormBuilderProps) {
   const [fields, setFields] = useState<DraftField[]>(() =>
-    initialFields.map(({ sort_order: _, ...f }) => f),
+    initialFields.map(withoutSortOrder),
   );
-
-  const uid = useId();
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -117,7 +120,6 @@ export function FormBuilder({ initialFields, onChange, readOnly = false }: FormB
               <FieldRow
                 field={field}
                 readOnly={readOnly}
-                uid={uid}
                 onPatch={(patch) => patchField(field.id, patch)}
                 onPatchOptions={(raw) => patchOptions(field.id, raw)}
                 onPatchFileTypes={(mime, checked) => {
@@ -155,14 +157,13 @@ export function FormBuilder({ initialFields, onChange, readOnly = false }: FormB
 interface FieldRowProps {
   field: DraftField;
   readOnly: boolean;
-  uid: string;
   onPatch: (patch: Partial<DraftField>) => void;
   onPatchOptions: (raw: string) => void;
   onPatchFileTypes: (mime: string, checked: boolean) => void;
   onRemove: () => void;
 }
 
-function FieldRow({ field, readOnly, uid, onPatch, onPatchOptions, onPatchFileTypes, onRemove }: FieldRowProps) {
+function FieldRow({ field, readOnly, onPatch, onPatchOptions, onPatchFileTypes, onRemove }: FieldRowProps) {
   const inputBase =
     "block w-full rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-200 disabled:bg-zinc-50 disabled:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-500 dark:focus:ring-zinc-700";
 

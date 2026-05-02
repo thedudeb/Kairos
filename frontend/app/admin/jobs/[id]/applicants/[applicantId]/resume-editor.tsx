@@ -30,7 +30,6 @@ const blankWork = (): WorkPatch => ({
 });
 
 export function ResumeEditor({ jobId, applicantId, parsed, readOnly = false }: ResumeEditorProps) {
-  if (readOnly) return null;
   const [editing, setEditing] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +63,8 @@ export function ResumeEditor({ jobId, applicantId, parsed, readOnly = false }: R
       description: w.description ?? "",
     })),
   );
+
+  if (readOnly) return null;
 
   function handleCancel() {
     setFullName(parsed.full_name ?? "");

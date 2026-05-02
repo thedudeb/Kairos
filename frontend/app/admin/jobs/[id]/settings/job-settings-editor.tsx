@@ -20,6 +20,12 @@ import type {
 
 type Tab = "meta" | "fields" | "questions" | "template";
 
+function withoutSortOrder<T extends { sort_order: number }>(item: T): Omit<T, "sort_order"> {
+  const { sort_order, ...rest } = item;
+  void sort_order;
+  return rest;
+}
+
 export function JobSettingsEditor({
   job,
   templates,
@@ -48,12 +54,12 @@ export function JobSettingsEditor({
 
   // ── Fields tab state ────────────────────────────────────────────────────────
   const [fields, setFields] = useState<Omit<FormFieldItem, "sort_order">[]>(
-    job.form_fields.map(({ sort_order: _, ...f }) => f),
+    job.form_fields.map(withoutSortOrder),
   );
 
   // ── Questions tab state ─────────────────────────────────────────────────────
   const [questions, setQuestions] = useState<Omit<AssessmentQuestionItem, "sort_order">[]>(
-    job.assessment_questions.map(({ sort_order: _, ...q }) => q),
+    job.assessment_questions.map(withoutSortOrder),
   );
 
   // ── Template tab state ──────────────────────────────────────────────────────

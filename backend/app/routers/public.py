@@ -75,7 +75,8 @@ def _get_active_job_or_raise(session: Session, slug: str) -> Job:
 
 
 @router.get("/jobs/{slug}", response_model=PublicJobResponse)
-def get_public_job(slug: str, session: Session = Depends(get_session)) -> PublicJobResponse:
+@limiter.limit("120/minute")
+def get_public_job(request: Request, slug: str, session: Session = Depends(get_session)) -> PublicJobResponse:
     """Return public job info. Draft jobs return 404 (not published yet)."""
     job = _get_active_job_or_raise(session, slug)
 
@@ -102,7 +103,8 @@ def get_public_job(slug: str, session: Session = Depends(get_session)) -> Public
 
 
 @router.get("/jobs-active", response_model=list[PublicJobListItem])
-def list_active_jobs(session: Session = Depends(get_session)) -> list[PublicJobListItem]:
+@limiter.limit("60/minute")
+def list_active_jobs(request: Request, session: Session = Depends(get_session)) -> list[PublicJobListItem]:
     """Published jobs accepting applications — used by the optional `/careers` index page."""
     rows = session.exec(
         select(Job)
@@ -269,22 +271,23 @@ async def submit_application(
                     status.HTTP_422_UNPROCESSABLE_CONTENT,
                     "File type not allowed for this field.",
                 )
-            # Validate magic bytes — don't trust client-supplied Content-Type
-            magic_sigs = _CUSTOM_MAGIC.get(file_ct, [])
-            if magic_sigs and not any(file_bytes.startswith(sig) for sig in magic_sigs):
-                # Special case: WebP = RIFF????WEBP
-                if file_ct == "image/webp" and not (
-                    file_bytes[:4] == b"RIFF" and file_bytes[8:12] == b"WEBP"
-                ):
-                    raise HTTPException(
-                        status.HTTP_422_UNPROCESSABLE_CONTENT,
-                        "File contents do not match the declared type.",
-                    )
-                elif file_ct != "image/webp":
-                    raise HTTPException(
-                        status.HTTP_422_UNPROCESSABLE_CONTENT,
-                        "File contents do not match the declared type.",
-                    )
+            # Validate magic bytes — don't trust client-supplied Content-Type.
+            # WebP is checked separately because its signature is non-contiguous
+            # (RIFF at offset 0, WEBP at offset 8) and can't be expressed as a
+            # simple leading-byte prefix.
+            _magic_invalid = False
+            if file_ct == "image/webp":
+                if not (len(file_bytes) >= 12 and file_bytes[:4] == b"RIFF" and file_bytes[8:12] == b"WEBP"):
+                    _magic_invalid = True
+            else:
+                magic_sigs = _CUSTOM_MAGIC.get(file_ct, [])
+                if magic_sigs and not any(file_bytes.startswith(sig) for sig in magic_sigs):
+                    _magic_invalid = True
+            if _magic_invalid:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    "File contents do not match the declared type.",
+                )
             cfile_path = f"custom-files/{job.id}/{applicant.id}/{field.id}"
             try:
                 cpath = storage_svc.upload_file(

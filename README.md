@@ -219,6 +219,10 @@ Important paths:
 - Individual job pages: `/careers/{slug}`
 - Admin: `/admin`
 
+Note: the assignment's primary distribution model is direct-link job pages. The
+`/careers` index is retained for reviewer/demo convenience, is marked noindex,
+and can be disabled or hidden for production teams that want link-only listings.
+
 Point `BACKEND_URL` (frontend env) at your deployed API, and set `AUTH_URL` / `NEXTAUTH_URL` to match your frontend origin.
 
 ## Architecture notes

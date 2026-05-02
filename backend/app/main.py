@@ -19,12 +19,18 @@ log = structlog.get_logger()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.environment == "production" and not settings.resend_api_key:
+        raise RuntimeError("RESEND_API_KEY is required in production.")
+
     # Best-effort ARQ pool — submissions still work without Redis
     try:
         from arq import create_pool
         from arq.connections import RedisSettings
 
-        app.state.arq_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        app.state.arq_pool = await create_pool(
+            RedisSettings.from_dsn(settings.redis_url),
+            default_queue_name=settings.arq_queue_name,
+        )
         log.info("arq_pool.connected")
     except Exception:
         app.state.arq_pool = None
@@ -55,6 +61,8 @@ _TAGS_METADATA = [
     {"name": "internal:auth", "description": "Server-to-server: Auth.js calls this on sign-in to sync users and issue our session JWT."},
 ]
 
+_is_production = settings.environment == "production"
+
 app = FastAPI(
     title="Recruitment Pipeline API",
     description=(
@@ -67,6 +75,11 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
     openapi_tags=_TAGS_METADATA,
+    # Disable interactive docs in production — they expose internal endpoint
+    # details (auth methods, schemas) and provide reconnaissance value.
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
 )
 
 app.state.limiter = limiter

@@ -5,8 +5,9 @@ Each webhook call:
   2. POSTs to the configured endpoint with Authorization: Bearer header.
   3. Records the attempt in WebhookDelivery (success or failure).
 
-Idempotency: the unique constraint (transition_id, integration_id, attempt_number)
-prevents double-firing. Manual retries use is_manual_retry=True and a fresh
+Idempotency: each automatic attempt claims its (transition_id, integration_id,
+attempt_number) row before sending. A duplicate trigger loses that claim and
+exits without sending. Manual retries use is_manual_retry=True and a fresh
 attempt number.
 
 Auto-retry: on transient failure (5xx, timeout, network error) the wrapper
@@ -26,6 +27,7 @@ from uuid import UUID
 
 import httpx
 import structlog
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.config import settings
@@ -66,10 +68,20 @@ def encrypt_api_key(plain: str) -> str:
 
 
 def decrypt_api_key(encrypted: str) -> str:
+    """Decrypt a stored API key. Raises ValueError on failure.
+
+    Never silently falls back to returning the raw ciphertext — that would
+    cause integrations to send the encrypted blob as a Bearer token and fail
+    with no actionable error. Callers must handle the ValueError explicitly.
+    """
     try:
         return _fernet().decrypt(encrypted.encode()).decode()
-    except Exception:
-        return encrypted  # fallback: treat as plaintext (legacy)
+    except Exception as exc:
+        log.error(
+            "webhook.api_key_decrypt_failed",
+            note="ENCRYPTION_SECRET may have changed. Re-save the integration API key to fix.",
+        )
+        raise ValueError("Failed to decrypt webhook API key") from exc
 
 
 def mask_api_key(encrypted: str) -> str:
@@ -178,6 +190,7 @@ def fire_webhook(
     transition_id: UUID,
     integration_id: UUID,
     is_manual_retry: bool = False,
+    attempt_number: int | None = None,
 ) -> tuple[bool, bool]:
     """Deliver the webhook synchronously. Records one WebhookDelivery row.
 
@@ -193,18 +206,45 @@ def fire_webhook(
         if not transition or not integration or not integration.is_active:
             return True, False  # nothing to do; treat as success
 
-        # Determine attempt number
-        existing = session.execute(
-            select(WebhookDelivery)
-            .where(
-                WebhookDelivery.transition_id == transition_id,
-                WebhookDelivery.integration_id == integration_id,
-            )
-        ).scalars().all()
-        attempt_number = max((d.attempt_number for d in existing), default=0) + 1
+        if attempt_number is None:
+            if is_manual_retry:
+                existing = session.execute(
+                    select(WebhookDelivery).where(
+                        WebhookDelivery.transition_id == transition_id,
+                        WebhookDelivery.integration_id == integration_id,
+                    )
+                ).scalars().all()
+                attempt_number = max((d.attempt_number for d in existing), default=0) + 1
+            else:
+                attempt_number = 1
 
         payload = _build_payload(session, transition, integration)
-        api_key = decrypt_api_key(integration.api_key_encrypted)
+
+        # Decrypt API key — treat failure as a permanent (non-retriable) error
+        # so we don't spam the third party with the raw ciphertext.
+        try:
+            api_key = decrypt_api_key(integration.api_key_encrypted)
+        except ValueError:
+            log.error(
+                "webhook.api_key_decrypt_failed",
+                integration_id=str(integration_id),
+                note="Re-save the integration API key to re-encrypt with the current key.",
+            )
+            # Record the failure so admins can see it in the delivery log.
+            bad_delivery = WebhookDelivery(
+                transition_id=transition_id,
+                integration_id=integration_id,
+                attempt_number=attempt_number,
+                is_manual_retry=is_manual_retry,
+                request_payload=payload,
+                error="API key decryption failed — re-save the integration to fix.",
+            )
+            session.add(bad_delivery)
+            try:
+                session.commit()
+            except Exception:
+                session.rollback()
+            return False, False  # permanent failure, don't retry
 
         # Re-validate URL at delivery time to prevent DNS-rebinding attacks
         # (the URL was checked at creation time, but DNS may have changed).
@@ -226,6 +266,19 @@ def fire_webhook(
             is_manual_retry=is_manual_retry,
             request_payload=payload,
         )
+        session.add(delivery)
+        try:
+            session.commit()
+            session.refresh(delivery)
+        except IntegrityError:
+            session.rollback()
+            log.info(
+                "webhook.duplicate_attempt_skipped",
+                transition_id=str(transition_id),
+                integration_id=str(integration_id),
+                attempt=attempt_number,
+            )
+            return True, False
 
         success = False
         is_transient = False
@@ -289,11 +342,12 @@ def deliver_with_retry(
         transition_id=transition_id,
         integration_id=integration_id,
         is_manual_retry=False,
+        attempt_number=1,
     )
     if success:
         return
 
-    for delay_s in _AUTO_RETRY_DELAYS_SECONDS:
+    for attempt_number, delay_s in enumerate(_AUTO_RETRY_DELAYS_SECONDS, start=2):
         if not is_transient:
             return  # permanent failure — stop retrying
         time.sleep(delay_s)
@@ -301,6 +355,7 @@ def deliver_with_retry(
             transition_id=transition_id,
             integration_id=integration_id,
             is_manual_retry=False,
+            attempt_number=attempt_number,
         )
         if success:
             return

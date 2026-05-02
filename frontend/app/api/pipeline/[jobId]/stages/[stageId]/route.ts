@@ -1,9 +1,13 @@
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { rejectCrossOriginMutation } from "@/lib/request-guards";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 async function proxy(req: NextRequest, jobId: string, stageId: string) {
+  const rejected = rejectCrossOriginMutation(req);
+  if (rejected) return rejected;
+
   const session = await auth();
   if (!session?.backendToken) return new NextResponse("Unauthorized", { status: 401 });
   const body = req.method !== "GET" && req.method !== "DELETE"

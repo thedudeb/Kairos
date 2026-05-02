@@ -122,7 +122,7 @@ export default async function ApplicantDetailPage({
               <ParseStatusBadge status={applicant.parse_status} />
               {applicant.resume_url && (
                 <a
-                  href={applicant.resume_url}
+                  href={`/api/jobs/${jobId}/applicants/${applicantId}/resume`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
@@ -149,7 +149,7 @@ export default async function ApplicantDetailPage({
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Original resume</h2>
                   <a
-                    href={applicant.resume_url}
+                    href={`/api/jobs/${jobId}/applicants/${applicantId}/resume`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"

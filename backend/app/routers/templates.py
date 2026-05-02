@@ -139,11 +139,21 @@ def update_template(
     session.add(template)
 
     if payload.form_fields is not None or payload.assessment_questions is not None:
+        resolved_fields = (
+            payload.form_fields
+            if payload.form_fields is not None
+            else _fetch_full(session, template).form_fields
+        )
+        resolved_questions = (
+            payload.assessment_questions
+            if payload.assessment_questions is not None
+            else _fetch_full(session, template).assessment_questions
+        )
         _replace_fields(
             session,
             template,
-            payload.form_fields or [],
-            payload.assessment_questions or [],
+            resolved_fields,
+            resolved_questions,
         )
 
     session.commit()

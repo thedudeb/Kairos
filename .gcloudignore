@@ -1,0 +1,41 @@
+.gcloudignore
+.git/
+.gitignore
+
+# Frontend — not needed for backend build
+frontend/
+
+# Docs / misc large files
+docs/
+assignment.pdf
+README.md
+
+# Dev tooling
+.devcontainer/
+.claude/
+.DS_Store
+.editorconfig
+
+# Python artifacts
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/.coverage
+backend/htmlcov/
+
+# Environment files
+backend/.env
+backend/.env.*
+backend/*.local
+
+# Redis dump
+backend/dump.rdb
+
+# Logs
+*.log

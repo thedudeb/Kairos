@@ -35,8 +35,9 @@ class JobIntegration(TimestampMixin, SQLModel, table=True):
 class WebhookDelivery(SQLModel, table=True):
     """One row per outbound webhook attempt.
 
-    Idempotency: the unique constraint on (transition_id, integration_id,
-    attempt_number) prevents the same trigger from firing twice. Manual
+    Idempotency: automatic senders claim a numbered attempt before making the
+    HTTP call. The unique constraint on (transition_id, integration_id,
+    attempt_number) prevents the same trigger attempt from firing twice. Manual
     admin retries deliberately use a fresh attempt_number with
     is_manual_retry=true.
     """

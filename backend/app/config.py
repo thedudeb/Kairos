@@ -42,6 +42,7 @@ class Settings(BaseSettings):
 
     # --- Behavior ---------------------------------------------------------
     jwt_algorithm: str = "HS256"
+    arq_queue_name: str = "recruitment:default"
     environment: str = Field("development")
 
 

@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 from app.db import get_session
 from app.models._base import JobDescriptionKind, JobStatus, RankStatus
 from app.models.applicant import Applicant, ApplicantFitScore
+from app.models.integration import JobIntegration
 from app.models.job import Job, JobAssessmentQuestion, JobFormField
 from app.models.pipeline import PipelineStage
 from app.models.template import Template, TemplateAssessmentQuestion, TemplateFormField
@@ -27,6 +28,7 @@ from app.schemas.job import (
     StageDistributionItem,
 )
 from app.security import require_admin, require_staff
+from app.utils.slug import unique_job_slug
 from app.utils.url import assert_https_document_url
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -444,10 +446,21 @@ def delete_job(
     _: object = Depends(require_admin),
 ) -> None:
     job = _get_or_404(session, job_id)
-    # Cascade-delete children
+
+    applicant_count = session.execute(
+        select(func.count()).select_from(Applicant).where(Applicant.job_id == job_id)
+    ).scalar_one()
+    if applicant_count:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Cannot delete a job that already has applicants. Close it instead to preserve applicant data.",
+        )
+
+    # Cascade-delete configuration rows for empty jobs.
     for model_cls, fk_col in [
         (JobFormField, JobFormField.job_id),
         (JobAssessmentQuestion, JobAssessmentQuestion.job_id),
+        (JobIntegration, JobIntegration.job_id),
         (PipelineStage, PipelineStage.job_id),
     ]:
         for row in session.exec(select(model_cls).where(fk_col == job_id)).all():

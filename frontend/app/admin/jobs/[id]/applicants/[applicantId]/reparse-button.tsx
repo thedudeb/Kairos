@@ -19,11 +19,11 @@ export function ReparseButton({
   parseStatus,
   readOnly = false,
 }: ReparseButtonProps) {
-  if (readOnly) return null;
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
   const canReparse = parseStatus === "failed" || parseStatus === "parsed" || parseStatus === "needs_manual";
+  if (readOnly) return null;
   if (!canReparse) return null;
 
   function handleClick() {

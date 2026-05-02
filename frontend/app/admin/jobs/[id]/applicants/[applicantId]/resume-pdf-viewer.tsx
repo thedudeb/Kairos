@@ -13,9 +13,9 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-/** Align worker build with the pdfjs-dist release bundled by react-pdf (required for PDF.js). */
+/** Serve the worker from /public so we never depend on an external CDN. */
 function configureWorker() {
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 }
 
 interface ResumePdfViewerProps {

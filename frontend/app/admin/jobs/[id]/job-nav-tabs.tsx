@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useTransition, useState, useEffect } from "react";
+import { useTransition, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -35,11 +35,6 @@ export function JobNavTabs({ jobId }: { jobId: string }) {
     });
   }
 
-  // Clear pending state once the transition resolves
-  useEffect(() => {
-    if (!isPending) setPendingHref(null);
-  }, [isPending]);
-
   return (
     <nav
       className="-mb-px flex gap-x-6 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -52,7 +47,8 @@ export function JobNavTabs({ jobId }: { jobId: string }) {
             ? pathname === jobBase
             : pathname === href || pathname.startsWith(`${href}/`);
         // Optimistic active: if a click is in flight to this tab, show it as active.
-        const optimisticActive = pendingHref ? pendingHref === href : realActive;
+        const optimisticHref = isPending ? pendingHref : null;
+        const optimisticActive = optimisticHref ? optimisticHref === href : realActive;
         const isLoading = isPending && pendingHref === href;
 
         return (
