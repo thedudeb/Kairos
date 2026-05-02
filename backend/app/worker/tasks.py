@@ -167,6 +167,13 @@ async def parse_resume(ctx: dict, *, applicant_id: str) -> str:
             log.info("parse_resume.already_parsed", applicant_id=applicant_id)
             return "already_parsed"
 
+        # Guard against concurrent runs: if another task is already mid-parse,
+        # bail out rather than racing to delete/reinsert child rows and double-
+        # billing Gemini. The in-flight task will set status to parsed/failed.
+        if applicant.parse_status == ParseStatus.parsing:
+            log.info("parse_resume.already_parsing_skip", applicant_id=applicant_id)
+            return "already_parsing"
+
         # Mark as in-progress
         applicant.parse_status = ParseStatus.parsing
         applicant.parse_attempts += 1

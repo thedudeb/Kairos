@@ -689,7 +689,12 @@ async def reparse_resume(
 ) -> dict:
     applicant = _get_applicant_or_404(session, applicant_id, job_id)
 
-    # Reset status so the UI shows "Parsing..."
+    # Don't reset status if a parse is already running — that would cause the
+    # in-flight task to race with the new one, corrupting child rows.
+    if applicant.parse_status == ParseStatus.parsing:
+        return {"queued": False, "note": "Resume is currently being parsed; try again shortly"}
+
+    # Reset status so the UI shows "Parsing…"
     applicant.parse_status = ParseStatus.pending
     applicant.parse_error = None
     session.add(applicant)

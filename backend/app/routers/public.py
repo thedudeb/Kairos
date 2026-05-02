@@ -7,6 +7,7 @@ audit logging can be scoped differently in future.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -80,7 +81,7 @@ def get_public_job(request: Request, slug: str, session: Session = Depends(get_s
     """Return public job info. Draft jobs return 404 (not published yet)."""
     job = _get_active_job_or_raise(session, slug)
 
-    if job.status == JobStatus.draft:
+    if job.status in (JobStatus.draft, JobStatus.closed):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "job not found")
 
     form_fields = session.exec(
@@ -367,7 +368,8 @@ async def submit_application(
         "application.submitted",
         applicant_id=str(applicant.id),
         job_id=str(job.id),
-        email=applicant.email,
+        # Log a short hash for correlation without storing raw PII in log sinks.
+        email_hash=hashlib.sha256(applicant.email.encode()).hexdigest()[:16],
     )
 
     return ApplicantSubmissionResponse(id=applicant.id)

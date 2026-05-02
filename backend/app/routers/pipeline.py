@@ -200,6 +200,15 @@ def reorder_stages(
     stages = session.exec(
         select(PipelineStage).where(PipelineStage.job_id == job_id)
     ).all()
+
+    known_ids = {s.id for s in stages}
+    unknown_ids = set(id_to_order) - known_ids
+    if unknown_ids:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Stage IDs not found in this job: {[str(i) for i in unknown_ids]}",
+        )
+
     for s in stages:
         if s.id in id_to_order:
             s.sort_order = id_to_order[s.id]

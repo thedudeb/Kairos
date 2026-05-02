@@ -8,12 +8,15 @@ const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 async function authedFetch(path: string, init: RequestInit = {}) {
   const session = await auth();
   const token = session?.backendToken;
+  // Fail fast if there's no session — prevents silently making unauthenticated
+  // requests to the backend which would just return 401 anyway.
+  if (!token) throw new Error("Unauthorized");
   return fetch(`${BACKEND_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     },
   });
 }
