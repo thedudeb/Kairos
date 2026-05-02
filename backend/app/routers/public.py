@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import EmailStr
 from sqlalchemy import func
 from sqlmodel import Session, select
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.config import settings
 from app.db import get_session
@@ -55,6 +56,13 @@ _CUSTOM_MAGIC: dict[str, list[bytes]] = {
     "application/msword": [b"\xd0\xcf\x11\xe0"],  # OLE2 compound doc
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [b"PK\x03\x04"],
 }
+
+
+def _required_field_error(label: str) -> HTTPException:
+    return HTTPException(
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
+        f"{label} is required.",
+    )
 
 # ─── Job info ─────────────────────────────────────────────────────────────────
 
@@ -151,19 +159,19 @@ async def submit_application(
     resume_bytes = await resume.read()
     if len(resume_bytes) > _MAX_RESUME_BYTES:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"Resume file too large (max {_MAX_RESUME_BYTES // 1024 // 1024} MB).",
         )
     content_type = resume.content_type or "application/octet-stream"
     if content_type not in _ALLOWED_RESUME_TYPES:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             "Only PDF resumes are accepted.",
         )
     # Validate PDF magic bytes — don't trust client-supplied Content-Type alone
     if not resume_bytes.startswith(_PDF_MAGIC):
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             "File does not appear to be a valid PDF.",
         )
 
@@ -233,68 +241,107 @@ async def submit_application(
 
         if field.field_type == "file":
             raw = form_data.get(file_key)
-            if raw and isinstance(raw, UploadFile):
-                file_bytes = await raw.read()
-                if file_bytes:
-                    # Enforce size and content-type limits on custom file uploads
-                    if len(file_bytes) > _MAX_CUSTOM_FILE_BYTES:
-                        raise HTTPException(
-                            status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            f"Uploaded file exceeds maximum size of {_MAX_CUSTOM_FILE_BYTES // 1024 // 1024} MB.",
-                        )
-                    file_ct = raw.content_type or "application/octet-stream"
-                    allowed_mimes = (
-                        _ALLOWED_CUSTOM_TYPES
-                        if not field.file_allowed_types
-                        else frozenset(field.file_allowed_types)
+            if not raw or not isinstance(raw, (UploadFile, StarletteUploadFile)):
+                if field.is_required:
+                    raise _required_field_error(field.label)
+                continue
+
+            file_bytes = await raw.read()
+            if not file_bytes:
+                if field.is_required:
+                    raise _required_field_error(field.label)
+                continue
+
+            # Enforce size and content-type limits on custom file uploads
+            if len(file_bytes) > _MAX_CUSTOM_FILE_BYTES:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    f"Uploaded file exceeds maximum size of {_MAX_CUSTOM_FILE_BYTES // 1024 // 1024} MB.",
+                )
+            file_ct = raw.content_type or "application/octet-stream"
+            allowed_mimes = (
+                _ALLOWED_CUSTOM_TYPES
+                if not field.file_allowed_types
+                else frozenset(field.file_allowed_types)
+            )
+            if file_ct not in allowed_mimes:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    "File type not allowed for this field.",
+                )
+            # Validate magic bytes — don't trust client-supplied Content-Type
+            magic_sigs = _CUSTOM_MAGIC.get(file_ct, [])
+            if magic_sigs and not any(file_bytes.startswith(sig) for sig in magic_sigs):
+                # Special case: WebP = RIFF????WEBP
+                if file_ct == "image/webp" and not (
+                    file_bytes[:4] == b"RIFF" and file_bytes[8:12] == b"WEBP"
+                ):
+                    raise HTTPException(
+                        status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        "File contents do not match the declared type.",
                     )
-                    if file_ct not in allowed_mimes:
-                        raise HTTPException(
-                            status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            "File type not allowed for this field.",
-                        )
-                    # Validate magic bytes — don't trust client-supplied Content-Type
-                    magic_sigs = _CUSTOM_MAGIC.get(file_ct, [])
-                    if magic_sigs and not any(file_bytes.startswith(sig) for sig in magic_sigs):
-                        # Special case: WebP = RIFF????WEBP
-                        if file_ct == "image/webp" and not (
-                            file_bytes[:4] == b"RIFF" and file_bytes[8:12] == b"WEBP"
-                        ):
-                            raise HTTPException(
-                                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                                "File contents do not match the declared type.",
-                            )
-                        elif file_ct != "image/webp":
-                            raise HTTPException(
-                                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                                "File contents do not match the declared type.",
-                            )
-                    cfile_path = f"custom-files/{job.id}/{applicant.id}/{field.id}"
-                    try:
-                        cpath = storage_svc.upload_file(
-                            data=file_bytes,
-                            destination_path=cfile_path,
-                            content_type=file_ct,
-                        )
-                        session.add(
-                            ApplicantCustomFieldValue(
-                                applicant_id=applicant.id,
-                                job_form_field_id=field.id,
-                                value_file_gcs_path=cpath,
-                            )
-                        )
-                    except Exception:
-                        log.warning("custom_file.upload_failed", field_id=str(field.id))
-        else:
-            value = form_data.get(field_key)
-            if value is not None:
+                elif file_ct != "image/webp":
+                    raise HTTPException(
+                        status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        "File contents do not match the declared type.",
+                    )
+            cfile_path = f"custom-files/{job.id}/{applicant.id}/{field.id}"
+            try:
+                cpath = storage_svc.upload_file(
+                    data=file_bytes,
+                    destination_path=cfile_path,
+                    content_type=file_ct,
+                )
                 session.add(
                     ApplicantCustomFieldValue(
                         applicant_id=applicant.id,
                         job_form_field_id=field.id,
-                        value_text=str(value),
+                        value_file_gcs_path=cpath,
                     )
                 )
+            except Exception:
+                log.exception("custom_file.upload_failed", field_id=str(field.id))
+                raise HTTPException(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    f"Failed to upload {field.label}. Please try again.",
+                ) from None
+        else:
+            value = form_data.get(field_key)
+            if field.field_type == "checkbox":
+                if value is None:
+                    if field.is_required:
+                        raise _required_field_error(field.label)
+                    continue
+                value_text = "true"
+            else:
+                value_text = str(value).strip() if value is not None else ""
+                if not value_text:
+                    if field.is_required:
+                        raise _required_field_error(field.label)
+                    continue
+                if field.field_type == "dropdown":
+                    options = field.options or []
+                    if value_text not in options:
+                        raise HTTPException(
+                            status.HTTP_422_UNPROCESSABLE_CONTENT,
+                            f"Invalid option selected for {field.label}.",
+                        )
+                if field.field_type == "number":
+                    try:
+                        float(value_text)
+                    except ValueError:
+                        raise HTTPException(
+                            status.HTTP_422_UNPROCESSABLE_CONTENT,
+                            f"{field.label} must be a number.",
+                        ) from None
+
+            session.add(
+                ApplicantCustomFieldValue(
+                    applicant_id=applicant.id,
+                    job_form_field_id=field.id,
+                    value_text=value_text,
+                )
+            )
 
     session.commit()
     session.refresh(applicant)

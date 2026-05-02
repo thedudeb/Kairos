@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Upload } from "lucide-react";
 import type { FieldType } from "@/types/api";
 
@@ -104,9 +105,25 @@ export function FileDropZone({
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   hint?: string;
 }) {
+  const [dragging, setDragging] = React.useState(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  function handleDrop(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    setDragging(false);
+    if (disabled) return;
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !inputRef.current) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    inputRef.current.files = dt.files;
+    inputRef.current.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
   return (
     <div>
       <input
+        ref={inputRef}
         type="file"
         name={name}
         accept={accept}
@@ -118,26 +135,31 @@ export function FileDropZone({
       />
       <label
         htmlFor={`file-${name}`}
+        onDragOver={(e) => { e.preventDefault(); if (!disabled) setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
         className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 text-center transition-colors ${
-          filename
+          dragging
+            ? "border-indigo-400 bg-indigo-50 dark:border-indigo-600 dark:bg-indigo-900/20"
+            : filename
             ? "border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/10"
             : "border-zinc-200 bg-zinc-50 hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600"
         } ${disabled ? "pointer-events-none opacity-50" : ""}`}
       >
         <Upload
-          className={`h-6 w-6 ${filename ? "text-emerald-500" : "text-zinc-400"}`}
+          className={`h-6 w-6 ${dragging ? "text-indigo-400" : filename ? "text-emerald-500" : "text-zinc-400"}`}
         />
         {filename ? (
           <>
             <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
               {filename}
             </span>
-            <span className="text-xs text-zinc-400">Click to change</span>
+            <span className="text-xs text-zinc-400">Click or drag to change</span>
           </>
         ) : (
           <>
             <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">
-              Click to upload
+              {dragging ? "Drop to upload" : "Click or drag & drop"}
             </span>
             <span className="text-xs text-zinc-400">{hint ?? "PDF only, max 10 MB"}</span>
           </>

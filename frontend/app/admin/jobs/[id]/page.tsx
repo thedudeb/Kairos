@@ -3,7 +3,6 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { Users, TrendingUp, Calendar, Layers } from "lucide-react";
 import { backendFetch, BackendError } from "@/lib/api";
-import type { JobOut } from "@/types/api";
 import { getCachedJob } from "./job-data";
 import { updateJobStatus } from "@/app/admin/actions";
 import { AnalyticsCharts } from "@/components/admin/analytics-charts";
@@ -251,13 +250,19 @@ export default async function JobOverviewPage({
           >
             Edit settings
           </Link>
-          <Link
-            href={`/careers/${job.slug}`}
-            target="_blank"
-            className="flex-1 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-center text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 sm:flex-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-          >
-            View portal ↗
-          </Link>
+          {job.status === "active" ? (
+            <Link
+              href={`/careers/${job.slug}`}
+              target="_blank"
+              className="flex-1 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-center text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 sm:flex-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              View portal ↗
+            </Link>
+          ) : (
+            <span className="flex-1 cursor-not-allowed rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-2 text-center text-sm font-medium text-zinc-400 sm:flex-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-600">
+              View portal ↗
+            </span>
+          )}
         </div>
       </div>
 
