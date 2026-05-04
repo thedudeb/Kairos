@@ -46,3 +46,8 @@ class WorkerSettings:
     max_jobs = 4
     job_timeout = 120  # seconds per job
     keep_result = 3600  # keep result in Redis for 1 hour
+    # Default poll_delay is 0.5s (2 Redis commands/sec = ~173K/day idle).
+    # Resume parsing is not latency-sensitive — 5 s delay is imperceptible
+    # to the applicant (who already sees a "Parsing…" indicator) and cuts
+    # idle Redis usage by 10×.
+    poll_delay = 5  # seconds between queue checks
