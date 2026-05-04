@@ -80,9 +80,10 @@ cp .env.local.example .env.local   # fill in the same four keys
 
 | Key | Where | How to get it |
 |-----|-------|--------------|
-| `GOOGLE_CLIENT_ID` | frontend + backend | [GCP → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials); add `http://localhost:3000/api/auth/callback/google` as an authorized redirect URI |
-| `GOOGLE_CLIENT_SECRET` | frontend + backend | same credential above |
+| `AUTH_GOOGLE_ID` | frontend (`AUTH_GOOGLE_ID`) | [GCP → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials); add `http://localhost:3000/api/auth/callback/google` as an authorized redirect URI |
+| `AUTH_GOOGLE_SECRET` | frontend (`AUTH_GOOGLE_SECRET`) | same credential above |
 | `AUTH_SECRET` | frontend + backend | `openssl rand -base64 32` — **must be identical in both** |
+| `INTERNAL_API_KEY` | frontend + backend | `openssl rand -hex 32` — **must be identical in both** |
 | `INITIAL_ADMIN_EMAIL` | backend only | your Google email address — grants admin on first sign-in |
 
 Optional (gracefully skipped when absent):
@@ -129,7 +130,7 @@ Then start the three processes from the “Running” section.
 
 Interactive API reference: **`http://localhost:8000/docs`** (OpenAPI/Swagger). A concise list of staff-only HTTP routes (users, invites, job description modes, file field types) is in [`docs/API.md`](docs/API.md).
 
-Visit **http://localhost:3000** — sign in with Google, and the demo job will be there with 30 seeded applicants.
+Visit **http://localhost:3000** — click **"Try demo"** to log in instantly (no Google credentials needed), or sign in with Google. Three seeded jobs with 65 realistic applicants will be waiting.
 
 API docs (Swagger): **http://localhost:8000/docs** — see also [`docs/API.md`](docs/API.md).
 

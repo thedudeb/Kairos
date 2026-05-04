@@ -31,6 +31,41 @@ os.environ.setdefault("AUTH_SECRET", "local-dev-only-replace-me-in-prod-12345678
 os.environ.setdefault("INTERNAL_API_KEY", "local-dev-internal-key-replace-me-in-prod-1234567890abcdef")
 os.environ.setdefault("INITIAL_ADMIN_EMAIL", "you@example.com")
 
+# ─── Minimal but valid 1-page PDF (no external deps) ─────────────────────────
+# Written to /tmp/recruitment-uploads/ so the resume viewer works for demo
+# applicants in local-dev and Codespaces without a real GCS bucket.
+_PLACEHOLDER_PDF = (
+    b"%PDF-1.4\n"
+    b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+    b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+    b"3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R"
+    b"/Resources<</Font<</F1 4 0 R>>>>"
+    b"/Contents 5 0 R>>endobj\n"
+    b"4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n"
+    b"5 0 obj<</Length 44>>\nstream\n"
+    b"BT /F1 14 Tf 72 720 Td (Demo Resume) Tj ET\n"
+    b"endstream\nendobj\n"
+    b"xref\n0 6\n"
+    b"0000000000 65535 f \n"
+    b"0000000009 00000 n \n"
+    b"0000000058 00000 n \n"
+    b"0000000115 00000 n \n"
+    b"0000000266 00000 n \n"
+    b"0000000340 00000 n \n"
+    b"trailer<</Size 6/Root 1 0 R>>\n"
+    b"startxref\n450\n%%EOF\n"
+)
+
+
+def _write_placeholder_pdf(path: str) -> None:
+    """Create a minimal PDF at the given local:// path so the resume viewer works."""
+    if not path.startswith("local://"):
+        return
+    local_path = Path(path[len("local://"):])
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    if not local_path.exists():
+        local_path.write_bytes(_PLACEHOLDER_PDF)
+
 from sqlmodel import Session, select
 
 from app.db import engine
@@ -183,6 +218,9 @@ def seed_job(
         submitted_at = random_submitted_at(stage_idx)
         parse_status = ParseStatus.pending if random.random() < pending_parse_ratio else ParseStatus.parsed
 
+        resume_path = f"local:///tmp/recruitment-uploads/demo_{slug}_{i}.pdf"
+        _write_placeholder_pdf(resume_path)
+
         applicant = Applicant(
             job_id=job.id,
             current_stage_id=stage.id,
@@ -190,7 +228,7 @@ def seed_job(
             last_name=last,
             email=email,
             phone=f"+1 ({random.randint(200,999)}) {random.randint(100,999)}-{random.randint(1000,9999)}",
-            resume_gcs_path=f"local:///tmp/recruitment-uploads/demo_{slug}_{i}.pdf",
+            resume_gcs_path=resume_path,
             parse_status=parse_status,
             submitted_at=submitted_at,
         )
