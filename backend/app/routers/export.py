@@ -30,9 +30,8 @@ def _csv(v: str | None) -> str:
 
 
 def _stream_csv(
-    applicants: list[Applicant],
+    rows: list[tuple[Applicant, ParsedResume | None]],
     stage_map: dict[UUID, str],
-    parsed_map: dict[UUID, ParsedResume],
 ) -> Generator[str, None, None]:
     """Yield CSV rows one at a time so large exports never buffer fully in memory."""
     buf = io.StringIO()
@@ -47,10 +46,9 @@ def _stream_csv(
     yield buf.getvalue()
 
     # Data rows — write one, yield, reset buffer
-    for a in applicants:
+    for a, pr in rows:
         buf.seek(0)
         buf.truncate(0)
-        pr = parsed_map.get(a.id)
         writer.writerow([
             _csv(a.first_name),
             _csv(a.last_name),
@@ -73,8 +71,11 @@ def export_applicants_csv(
     session: Session = Depends(get_session),
     _: object = Depends(require_staff),
 ) -> StreamingResponse:
-    applicants = session.exec(
-        select(Applicant)
+    # Single query with LEFT JOIN — avoids loading all ParsedResume rows into a
+    # separate dict and eliminates the N+1 / second round-trip pattern.
+    rows: list[tuple[Applicant, ParsedResume | None]] = session.exec(
+        select(Applicant, ParsedResume)
+        .outerjoin(ParsedResume, ParsedResume.applicant_id == Applicant.id)
         .where(Applicant.job_id == job_id)
         .order_by(Applicant.submitted_at.desc())
     ).all()
@@ -86,17 +87,8 @@ def export_applicants_csv(
         ).all()
     }
 
-    parsed_map: dict[UUID, ParsedResume] = {}
-    if applicants:
-        for pr in session.exec(
-            select(ParsedResume).where(
-                ParsedResume.applicant_id.in_([a.id for a in applicants])
-            )
-        ).all():
-            parsed_map[pr.applicant_id] = pr
-
     return StreamingResponse(
-        _stream_csv(applicants, stage_map, parsed_map),
+        _stream_csv(rows, stage_map),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="applicants-{job_id}.csv"'},
     )

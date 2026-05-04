@@ -12,7 +12,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import Response
-from sqlalchemy import cast, func, or_, Text
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from app.db import get_session
@@ -368,7 +368,6 @@ def list_applicants(
             )
             .exists()
         )
-        raw_json_like = func.lower(cast(ParsedResume.raw_json, Text)).like(term)
         q = q.where(
             or_(
                 func.lower(Applicant.first_name).like(term),
@@ -378,7 +377,6 @@ def list_applicants(
                 func.lower(func.coalesce(ParsedResume.full_name, '')).like(term),
                 func.lower(func.coalesce(ParsedResume.email, '')).like(term),
                 func.lower(func.coalesce(ParsedResume.phone, '')).like(term),
-                raw_json_like,
                 skill_search_subq,
                 edu_search_subq,
                 work_search_subq,

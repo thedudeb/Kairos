@@ -44,6 +44,7 @@ class WorkerSettings:
     on_shutdown = shutdown
     queue_name = settings.arq_queue_name
     max_jobs = 4
+    max_tries = 3      # retry failed jobs at most 3 times before marking dead
     job_timeout = 120  # seconds per job
     keep_result = 3600  # keep result in Redis for 1 hour
     # Default poll_delay is 0.5s (2 Redis commands/sec = ~173K/day idle).

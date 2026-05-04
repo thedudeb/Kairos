@@ -118,6 +118,10 @@ def get_download_url(storage_path: str, *, frontend_origin: str | None = None) -
 
 
 def make_resume_path(job_id: str, applicant_id: str, original_filename: str) -> str:
-    """Deterministic GCS/local path for a resume."""
-    ext = Path(original_filename).suffix.lower() or ".pdf"
-    return f"resumes/{job_id}/{applicant_id}{ext}"
+    """Deterministic GCS/local path for a resume.
+
+    The public upload endpoint only accepts PDF files, so we always store
+    with a .pdf extension regardless of what the client sent in the filename.
+    This closes a path-traversal / extension-smuggling vector.
+    """
+    return f"resumes/{job_id}/{applicant_id}.pdf"
