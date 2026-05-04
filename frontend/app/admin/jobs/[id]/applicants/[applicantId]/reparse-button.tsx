@@ -1,8 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
 import type { ParseStatus } from "@/types/api";
 import { reparseResume } from "../actions";
 
@@ -20,27 +20,52 @@ export function ReparseButton({
   readOnly = false,
 }: ReparseButtonProps) {
   const [isPending, startTransition] = useTransition();
+  const [feedback, setFeedback] = useState<"queued" | "error" | null>(null);
   const router = useRouter();
 
   const canReparse = parseStatus === "failed" || parseStatus === "parsed" || parseStatus === "needs_manual";
   if (readOnly) return null;
   if (!canReparse) return null;
 
+  // Auto-clear the feedback toast after 3 seconds
+  useEffect(() => {
+    if (!feedback) return;
+    const t = setTimeout(() => setFeedback(null), 3000);
+    return () => clearTimeout(t);
+  }, [feedback]);
+
   function handleClick() {
     startTransition(async () => {
-      await reparseResume(jobId, applicantId);
-      router.refresh();
+      const result = await reparseResume(jobId, applicantId);
+      if (result.ok) {
+        setFeedback("queued");
+        router.refresh();
+      } else {
+        setFeedback("error");
+      }
     });
   }
 
   return (
-    <button
-      onClick={handleClick}
-      disabled={isPending}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
-    >
-      <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
-      Re-parse
-    </button>
+    <div className="flex items-center gap-2">
+      {feedback === "queued" && (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          <CheckCircle className="h-3.5 w-3.5" /> Queued
+        </span>
+      )}
+      {feedback === "error" && (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400">
+          <AlertCircle className="h-3.5 w-3.5" /> Failed to queue
+        </span>
+      )}
+      <button
+        onClick={handleClick}
+        disabled={isPending}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+      >
+        <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
+        Re-parse
+      </button>
+    </div>
   );
 }

@@ -12,6 +12,7 @@ import { ResumeEditor } from "./resume-editor";
 import { ResumePdfViewer } from "./resume-pdf-viewer";
 import { ApplicantAvatar } from "@/components/applicant-avatar";
 import { FitScoreCard } from "./fit-score-card";
+import { ParseStatusPoller } from "./parse-status-poller";
 
 async function fetchApplicant(jobId: string, applicantId: string): Promise<ApplicantDetail | null> {
   try {
@@ -73,6 +74,8 @@ export default async function ApplicantDetailPage({
   const pr = applicant.parsed_resume;
 
   return (
+    <>
+    <ParseStatusPoller parseStatus={applicant.parse_status} />
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
 
       {/* ── Top bar ── */}
@@ -383,24 +386,29 @@ export default async function ApplicantDetailPage({
               <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
                 Activity
               </h2>
-              <ol className="relative space-y-4 border-l border-zinc-200 pl-5 dark:border-zinc-700">
-                {applicant.activity.map((event) => (
-                  <li key={event.id} className="relative">
-                    <div className="absolute -left-[21px] top-1 h-3 w-3 rounded-full border-2 border-white bg-zinc-300 dark:border-zinc-900 dark:bg-zinc-600" />
-                    <p className="text-sm text-zinc-700 dark:text-zinc-300">{event.detail}</p>
-                    <p className="mt-0.5 text-xs text-zinc-400">
-                      {event.actor_name && <span className="font-medium">{event.actor_name} · </span>}
-                      {formatShortDate(event.timestamp)}
-                    </p>
-                  </li>
-                ))}
-              </ol>
+              {applicant.activity.length === 0 ? (
+                <p className="text-sm text-zinc-400 dark:text-zinc-500">No activity yet.</p>
+              ) : (
+                <ol className="relative space-y-4 border-l border-zinc-200 pl-5 dark:border-zinc-700">
+                  {applicant.activity.map((event) => (
+                    <li key={event.id} className="relative">
+                      <div className="absolute -left-[21px] top-1 h-3 w-3 rounded-full border-2 border-white bg-zinc-300 dark:border-zinc-900 dark:bg-zinc-600" />
+                      <p className="text-sm text-zinc-700 dark:text-zinc-300">{event.detail}</p>
+                      <p className="mt-0.5 text-xs text-zinc-400">
+                        {event.actor_name && <span className="font-medium">{event.actor_name} · </span>}
+                        {formatShortDate(event.timestamp)}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </section>
           </div>
 
         </div>
       </div>
     </div>
+    </>
   );
 }
 

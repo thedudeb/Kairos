@@ -35,22 +35,27 @@ function NoteItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(note.body);
+  const [editError, setEditError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
   function handleSaveEdit() {
     const trimmed = editBody.trim();
     if (!trimmed) return;
+    setEditError(null);
     startTransition(async () => {
       const result = await editNote(jobId, applicantId, note.id, trimmed);
       if (result.ok) {
         setEditing(false);
         router.refresh();
+      } else {
+        setEditError("Failed to save — please try again.");
       }
     });
   }
 
   function handleDelete() {
+    if (!window.confirm("Delete this note? This cannot be undone.")) return;
     startTransition(async () => {
       await deleteNote(jobId, applicantId, note.id);
       router.refresh();
@@ -68,6 +73,7 @@ function NoteItem({
           autoFocus
           className="block w-full resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 focus:ring-2 focus:ring-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
         />
+        {editError && <p className="mt-1 text-xs text-red-500">{editError}</p>}
         <div className="mt-2 flex items-center gap-2">
           <button
             onClick={handleSaveEdit}
@@ -81,6 +87,7 @@ function NoteItem({
             onClick={() => {
               setEditing(false);
               setEditBody(note.body);
+              setEditError(null);
             }}
             className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-600"
           >
