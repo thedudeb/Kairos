@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { ApplicationForm } from "./application-form";
 
 export const metadata: Metadata = {
@@ -20,7 +22,7 @@ export const metadata: Metadata = {
   },
 };
 
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+import { BACKEND_URL } from "@/lib/constants";
 
 interface JobData {
   id: string;
@@ -191,43 +193,63 @@ function JobDescription({ markdown }: { markdown: string }) {
 }
 
 function MarkdownContent({ markdown }: { markdown: string }) {
-  const paragraphs = markdown.split(/\n{2,}/);
   return (
-    <>
-      {paragraphs.map((para, i) => {
-        const trimmed = para.trim();
-        if (!trimmed) return null;
-        if (trimmed.startsWith("# ")) {
-          return (
-            <h2 key={i} className="mt-6 mb-3 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
-              {trimmed.slice(2)}
-            </h2>
-          );
-        }
-        if (trimmed.startsWith("## ")) {
-          return (
-            <h3 key={i} className="mt-5 mb-2 text-lg font-semibold text-zinc-800 dark:text-zinc-200">
-              {trimmed.slice(3)}
-            </h3>
-          );
-        }
-        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-          const items = trimmed.split("\n").filter(Boolean);
-          return (
-            <ul key={i} className="mb-4 ml-5 list-disc space-y-1 text-zinc-700 dark:text-zinc-300">
-              {items.map((item, j) => (
-                <li key={j}>{item.replace(/^[-*]\s/, "")}</li>
-              ))}
-            </ul>
-          );
-        }
-        return (
-          <p key={i} className="mb-4 leading-relaxed text-zinc-700 dark:text-zinc-300">
-            {trimmed}
-          </p>
-        );
-      })}
-    </>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h1: ({ children }) => (
+          <h1 className="mt-6 mb-3 text-2xl font-bold text-zinc-900 dark:text-zinc-100">{children}</h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="mt-6 mb-3 text-xl font-semibold text-zinc-900 dark:text-zinc-100">{children}</h2>
+        ),
+        h3: ({ children }) => (
+          <h3 className="mt-5 mb-2 text-lg font-semibold text-zinc-800 dark:text-zinc-200">{children}</h3>
+        ),
+        p: ({ children }) => (
+          <p className="mb-4 leading-relaxed text-zinc-700 dark:text-zinc-300">{children}</p>
+        ),
+        ul: ({ children }) => (
+          <ul className="mb-4 ml-5 list-disc space-y-1 text-zinc-700 dark:text-zinc-300">{children}</ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="mb-4 ml-5 list-decimal space-y-1 text-zinc-700 dark:text-zinc-300">{children}</ol>
+        ),
+        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        strong: ({ children }) => (
+          <strong className="font-semibold text-zinc-900 dark:text-zinc-100">{children}</strong>
+        ),
+        em: ({ children }) => <em className="italic">{children}</em>,
+        code: ({ children }) => (
+          <code className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-sm text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
+            {children}
+          </code>
+        ),
+        pre: ({ children }) => (
+          <pre className="mb-4 overflow-x-auto rounded-lg bg-zinc-100 p-4 font-mono text-sm dark:bg-zinc-800">
+            {children}
+          </pre>
+        ),
+        a: ({ href, children }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-indigo-600 underline underline-offset-2 hover:text-indigo-700 dark:text-indigo-400"
+          >
+            {children}
+          </a>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="mb-4 border-l-4 border-zinc-300 pl-4 italic text-zinc-600 dark:border-zinc-600 dark:text-zinc-400">
+            {children}
+          </blockquote>
+        ),
+        hr: () => <hr className="my-6 border-zinc-200 dark:border-zinc-700" />,
+      }}
+    >
+      {markdown}
+    </ReactMarkdown>
   );
 }
 

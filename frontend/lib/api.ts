@@ -7,7 +7,7 @@
  */
 import { auth } from "@/auth";
 
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+import { BACKEND_URL } from "@/lib/constants";
 
 export class BackendError extends Error {
   constructor(public status: number, public body: string) {

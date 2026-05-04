@@ -25,7 +25,7 @@ class JobIntegration(TimestampMixin, SQLModel, table=True):
 
     id: UUID = Field(default_factory=uuid_pk, primary_key=True)
     job_id: UUID = Field(foreign_key="jobs.id", nullable=False, index=True)
-    stage_id: UUID = Field(foreign_key="pipeline_stages.id", nullable=False)
+    stage_id: UUID = Field(foreign_key="pipeline_stages.id", nullable=False, index=True)
     endpoint_url: str = Field(max_length=2048)
     api_key_encrypted: str = Field(max_length=2048)
     include_assessment: bool = Field(default=True)

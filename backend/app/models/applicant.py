@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import JSON, Column, DateTime, String, UniqueConstraint, func
+from sqlalchemy import Index, JSON, Column, DateTime, String, UniqueConstraint, func
 from sqlmodel import Field, SQLModel
 
 from app.models._base import ParseStatus, RankStatus, TimestampMixin, uuid_pk
@@ -21,6 +21,8 @@ class Applicant(TimestampMixin, SQLModel, table=True):
     __tablename__ = "applicants"
     __table_args__ = (
         UniqueConstraint("job_id", "email", name="uq_applicants_job_email"),
+        # Composite index for the default list sort: WHERE job_id = X ORDER BY submitted_at DESC
+        Index("ix_applicants_job_submitted_at", "job_id", "submitted_at"),
     )
 
     id: UUID = Field(default_factory=uuid_pk, primary_key=True)
@@ -116,7 +118,7 @@ class ApplicantNote(TimestampMixin, SQLModel, table=True):
 
     id: UUID = Field(default_factory=uuid_pk, primary_key=True)
     applicant_id: UUID = Field(foreign_key="applicants.id", nullable=False, index=True)
-    author_id: UUID = Field(foreign_key="users.id", nullable=False)
+    author_id: UUID = Field(foreign_key="users.id", nullable=False, index=True)
     body: str
 
 

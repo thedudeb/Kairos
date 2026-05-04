@@ -17,9 +17,9 @@ the payload, so retrying won't help.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
-import time
 import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -328,12 +328,16 @@ def fire_webhook(
         return success, is_transient
 
 
-def deliver_with_retry(
+async def deliver_with_retry(
     *,
     transition_id: UUID,
     integration_id: UUID,
 ) -> None:
     """BackgroundTask entry point: initial fire + transient-failure auto-retries.
+
+    Declared async so FastAPI's BackgroundTasks runs it as a coroutine — retries
+    use asyncio.sleep instead of time.sleep, so the event loop is never blocked
+    during the 5s / 30s wait between attempts.
 
     Manual admin retries call `fire_webhook` directly (no auto-retry chain) so
     the admin remains in control.
@@ -350,7 +354,7 @@ def deliver_with_retry(
     for attempt_number, delay_s in enumerate(_AUTO_RETRY_DELAYS_SECONDS, start=2):
         if not is_transient:
             return  # permanent failure — stop retrying
-        time.sleep(delay_s)
+        await asyncio.sleep(delay_s)
         success, is_transient = fire_webhook(
             transition_id=transition_id,
             integration_id=integration_id,

@@ -23,7 +23,7 @@ from app.models.user import User
 ALGO = settings.jwt_algorithm
 
 
-def issue_session_token(*, user_id: UUID, email: str, role: str, ttl_minutes: int = 60 * 24 * 30) -> str:
+def issue_session_token(*, user_id: UUID, email: str, role: str, ttl_minutes: int = 60 * 24 * 7) -> str:
     """Issue a session JWT. Used by the user-sync endpoint so the frontend can
     embed our claims in its Auth.js session."""
     now = datetime.now(timezone.utc)

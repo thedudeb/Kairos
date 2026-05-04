@@ -1,11 +1,11 @@
 """Schemas for the admin applicant management API."""
 from __future__ import annotations
 
+import re
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models._base import ParseStatus, RankStatus
 
@@ -47,8 +47,7 @@ class ParsedResumeOut(BaseModel):
     phone: str | None
     top_institution: str | None
     top_degree: str | None
-    raw_json: dict[str, Any]
-    confidence_notes: dict[str, Any] | None
+    confidence_notes: dict | None
     parsed_at: datetime
     education: list[EducationOut] = []
     work: list[WorkOut] = []
@@ -162,29 +161,43 @@ class StageMoveRequest(BaseModel):
 
 # ─── Parsed resume correction ─────────────────────────────────────────────────
 
+_DATE_RE = re.compile(r"^\d{4}(-\d{2})?$|^present$", re.IGNORECASE)
+
+
 class EducationCorrection(BaseModel):
-    institution: str | None = None
-    degree: str | None = None
-    field_of_study: str | None = None
+    institution: str | None = Field(default=None, max_length=300)
+    degree: str | None = Field(default=None, max_length=200)
+    field_of_study: str | None = Field(default=None, max_length=200)
     start_year: int | None = None
     end_year: int | None = None
 
 
 class WorkCorrection(BaseModel):
-    company: str | None = None
-    title: str | None = None
-    start_date: str | None = None  # "YYYY" or "YYYY-MM"
-    end_date: str | None = None
-    description: str | None = None
+    company: str | None = Field(default=None, max_length=300)
+    title: str | None = Field(default=None, max_length=200)
+    start_date: str | None = Field(default=None, max_length=20)  # "YYYY" or "YYYY-MM"
+    end_date: str | None = Field(default=None, max_length=20)    # "YYYY", "YYYY-MM", or "present"
+    description: str | None = Field(default=None, max_length=2_000)
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def _validate_date_format(cls, v: object) -> object:
+        if v is None:
+            return v
+        if not isinstance(v, str):
+            raise ValueError("must be a string")
+        if not _DATE_RE.match(v.strip()):
+            raise ValueError("must be YYYY, YYYY-MM, or 'present'")
+        return v.strip()
 
 
 class ParsedResumeCorrection(BaseModel):
-    full_name: str | None = Field(default=None)
-    email: str | None = Field(default=None)
-    phone: str | None = Field(default=None)
-    top_institution: str | None = Field(default=None)
-    top_degree: str | None = Field(default=None)
-    skills: list[str] | None = Field(default=None)
+    full_name: str | None = Field(default=None, max_length=200)
+    email: str | None = Field(default=None, max_length=254)
+    phone: str | None = Field(default=None, max_length=30)
+    top_institution: str | None = Field(default=None, max_length=300)
+    top_degree: str | None = Field(default=None, max_length=200)
+    skills: list[str] | None = Field(default=None, max_length=100)
     education: list[EducationCorrection] | None = Field(default=None)
     work: list[WorkCorrection] | None = Field(default=None)
 

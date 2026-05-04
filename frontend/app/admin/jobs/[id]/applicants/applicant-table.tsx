@@ -3,7 +3,7 @@
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Search, RefreshCw, Download, ChevronUp, ChevronDown, X, Filter } from "lucide-react";
+import { Search, RefreshCw, Download, ChevronUp, ChevronDown, X, Filter, ChevronLeft, ChevronRight } from "lucide-react";
 import type { ApplicantListItem, PipelineStage } from "@/types/api";
 import { ParseStatusBadge } from "./parse-status-badge";
 import { ApplicantAvatar } from "@/components/applicant-avatar";
@@ -40,6 +40,8 @@ interface ApplicantTableProps {
   activeSkills: string[];
   sortBy: string;
   sortDir: string;
+  page: number;
+  pageSize: number;
   canExport?: boolean;
 }
 
@@ -57,6 +59,8 @@ export function ApplicantTable({
   activeSkills,
   sortBy,
   sortDir,
+  page,
+  pageSize,
   canExport = true,
 }: ApplicantTableProps) {
   const router = useRouter();
@@ -72,7 +76,12 @@ export function ApplicantTable({
   const [dateFrom, setDateFrom] = useState(activeDateFrom);
   const [dateTo, setDateTo] = useState(activeDateTo);
 
-  function buildParams(overrides: Record<string, string | string[] | null>) {
+  const hasMore = applicants.length === pageSize;
+
+  function buildParams(
+    overrides: Record<string, string | string[] | null>,
+    resetPage = false,
+  ) {
     const sp = new URLSearchParams(window.location.search);
     for (const [k, v] of Object.entries(overrides)) {
       sp.delete(k);
@@ -83,11 +92,14 @@ export function ApplicantTable({
         sp.set(k, v);
       }
     }
+    if (resetPage) sp.delete("page");
     return sp.toString();
   }
 
   function applyFilter(key: string, value: string | null) {
-    startTransition(() => router.push(`${pathname}?${buildParams({ [key]: value })}`));
+    startTransition(() =>
+      router.push(`${pathname}?${buildParams({ [key]: value }, true)}`),
+    );
   }
 
   function toggleSkill(skill: string) {
@@ -95,14 +107,24 @@ export function ApplicantTable({
       ? activeSkills.filter((s) => s !== skill)
       : [...activeSkills, skill];
     startTransition(() =>
-      router.push(`${pathname}?${buildParams({ skills: next.length ? next : null })}`),
+      router.push(
+        `${pathname}?${buildParams({ skills: next.length ? next : null }, true)}`,
+      ),
     );
   }
 
   function toggleSort(col: string) {
     const newDir = sortBy === col && sortDir === "desc" ? "asc" : "desc";
     startTransition(() =>
-      router.push(`${pathname}?${buildParams({ sort_by: col, sort_dir: newDir })}`),
+      router.push(
+        `${pathname}?${buildParams({ sort_by: col, sort_dir: newDir }, true)}`,
+      ),
+    );
+  }
+
+  function goToPage(p: number) {
+    startTransition(() =>
+      router.push(`${pathname}?${buildParams({ page: p > 1 ? String(p) : null })}`),
     );
   }
 
@@ -114,12 +136,15 @@ export function ApplicantTable({
   function applyAdvancedFilters() {
     startTransition(() =>
       router.push(
-        `${pathname}?${buildParams({
-          institution: institution || null,
-          degree: degree || null,
-          date_from: dateFrom || null,
-          date_to: dateTo || null,
-        })}`,
+        `${pathname}?${buildParams(
+          {
+            institution: institution || null,
+            degree: degree || null,
+            date_from: dateFrom || null,
+            date_to: dateTo || null,
+          },
+          true,
+        )}`,
       ),
     );
   }
@@ -132,15 +157,19 @@ export function ApplicantTable({
     setDateTo("");
     startTransition(() =>
       router.push(
-        `${pathname}?${buildParams({
-          stage_id: null,
-          search: null,
-          institution: null,
-          degree: null,
-          date_from: null,
-          date_to: null,
-          skills: null,
-        })}`,
+        `${pathname}?${buildParams(
+          {
+            stage_id: null,
+            search: null,
+            institution: null,
+            degree: null,
+            date_from: null,
+            date_to: null,
+            skills: null,
+            page: null,
+          },
+          false,
+        )}`,
       ),
     );
   }
@@ -328,7 +357,7 @@ export function ApplicantTable({
       )}
 
       {/* Table */}
-      {applicants.length === 0 ? (
+      {applicants.length === 0 && page === 1 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-200 py-20 text-center dark:border-zinc-800">
           <p className="text-sm font-medium text-zinc-500">No applicants match these filters</p>
           {hasActiveFilters && (
@@ -349,6 +378,32 @@ export function ApplicantTable({
           sortDir={sortDir}
           onSort={toggleSort}
         />
+      )}
+
+      {/* Pagination */}
+      {(page > 1 || hasMore) && (
+        <div className="mt-4 flex items-center justify-between">
+          <button
+            onClick={() => goToPage(page - 1)}
+            disabled={page <= 1 || isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Previous
+          </button>
+          <span className="text-sm text-zinc-500">
+            Page {page}
+            {!hasMore && applicants.length === 0 ? " (no results)" : ""}
+          </span>
+          <button
+            onClick={() => goToPage(page + 1)}
+            disabled={!hasMore || isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
       )}
     </div>
   );

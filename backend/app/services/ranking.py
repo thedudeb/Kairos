@@ -9,12 +9,12 @@ Gemini key is not configured (caller should mark the row as `skipped`).
 """
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import structlog
 
 from app.config import settings
+from app.utils.llm import extract_json
 
 log = structlog.get_logger()
 
@@ -138,7 +138,10 @@ def score_applicant(
 
     from google import genai as google_genai
 
-    client = google_genai.Client(api_key=settings.gemini_api_key)
+    client = google_genai.Client(
+        api_key=settings.gemini_api_key,
+        http_options={"timeout": 60},  # 60s — ARQ job_timeout is 120s
+    )
     candidate_summary = _summarize_candidate(parsed_resume, custom_field_values or [])
 
     prompt = (
@@ -148,12 +151,7 @@ def score_applicant(
     )
 
     response = client.models.generate_content(model=settings.gemini_ranking_model, contents=prompt)
-    raw = response.text.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1]
-        raw = raw.rsplit("```", 1)[0]
-
-    parsed = json.loads(raw)
+    parsed = extract_json(response.text)
     return {
         "fit_score": _clamp(parsed.get("fit_score")),
         "skills_match": _clamp(parsed.get("skills_match")),

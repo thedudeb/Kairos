@@ -2,7 +2,7 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+import { BACKEND_URL } from "@/lib/constants";
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY ?? "";
 
 // How many ms before expiry to proactively refresh the backend token (1 day).
@@ -81,8 +81,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.backendId = user.backendId;
         token.role = user.role;
         token.backendToken = user.backendToken;
-        // Backend issues 30-day tokens; record when this one expires.
-        token.backendTokenExpiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
+        // Backend issues 7-day tokens; record when this one expires.
+        token.backendTokenExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
         return token;
       }
 
@@ -96,7 +96,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             const data = await syncWithBackend(email, token.name as string, token.picture as string);
             if (data) {
               token.backendToken = data.session_token;
-              token.backendTokenExpiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
+              token.backendTokenExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
             }
           } catch {
             // Keep existing token; it may still have time left.

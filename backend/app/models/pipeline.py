@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import Column, DateTime, func
+from sqlalchemy import Column, DateTime, Index, func
 from sqlmodel import Field, SQLModel
 
 from app.models._base import uuid_pk
@@ -25,6 +25,10 @@ class StageTransition(SQLModel, table=True):
     idempotency key for outbound webhook deliveries."""
 
     __tablename__ = "stage_transitions"
+    __table_args__ = (
+        # Composite index for activity timeline: WHERE applicant_id = X ORDER BY created_at
+        Index("ix_stage_transitions_applicant_created", "applicant_id", "created_at"),
+    )
 
     id: UUID = Field(default_factory=uuid_pk, primary_key=True)
     applicant_id: UUID = Field(foreign_key="applicants.id", nullable=False, index=True)

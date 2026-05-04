@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  GripVertical, Plus, Pencil, Trash2, Check, X, Loader2,
+  GripVertical, Plus, Pencil, Trash2, Check, X, Loader2, AlertTriangle,
 } from "lucide-react";
 import {
   DndContext,
@@ -48,6 +48,11 @@ interface StageManagerProps {
   initialStages: Stage[];
 }
 
+interface DeleteDialogState {
+  stage: Stage;
+  moveToId: string;
+}
+
 export function StageManager({ jobId, initialStages }: StageManagerProps) {
   const [stages, setStages] = useState(
     [...initialStages].sort((a, b) => a.sort_order - b.sort_order),
@@ -58,6 +63,7 @@ export function StageManager({ jobId, initialStages }: StageManagerProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
   const router = useRouter();
 
   const sensors = useSensors(
@@ -97,26 +103,36 @@ export function StageManager({ jobId, initialStages }: StageManagerProps) {
     });
   }
 
-  async function deleteStage(stage: Stage) {
-    if (stage.applicant_count > 0) {
-      setError(
-        `Cannot delete "${stage.name}" — ${stage.applicant_count} applicant(s) are currently in it.`,
-      );
-      return;
-    }
+  function requestDelete(stage: Stage) {
     if (stages.length <= 1) {
       setError("Cannot delete the last pipeline stage.");
       return;
     }
-    if (!confirm(`Delete stage "${stage.name}"? This cannot be undone.`)) return;
+    if (stage.applicant_count > 0) {
+      // Pick the first other stage as the default move-to target
+      const defaultTarget = stages.find((s) => s.id !== stage.id);
+      setDeleteDialog({ stage, moveToId: defaultTarget?.id ?? "" });
+    } else {
+      // No applicants — confirm then delete immediately
+      if (!confirm(`Delete stage "${stage.name}"? This cannot be undone.`)) return;
+      performDelete(stage.id, null);
+    }
+  }
+
+  function performDelete(stageId: string, moveToId: string | null) {
     setError(null);
+    const url = moveToId
+      ? `/${jobId}/stages/${stageId}?move_to=${moveToId}`
+      : `/${jobId}/stages/${stageId}`;
     startTransition(async () => {
       try {
-        await apiCall(`/${jobId}/stages/${stage.id}`, "DELETE");
-        setStages((prev) => prev.filter((s) => s.id !== stage.id));
+        await apiCall(url, "DELETE");
+        setStages((prev) => prev.filter((s) => s.id !== stageId));
+        setDeleteDialog(null);
         router.refresh();
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to delete stage");
+        setDeleteDialog(null);
       }
     });
   }
@@ -224,7 +240,7 @@ export function StageManager({ jobId, initialStages }: StageManagerProps) {
                 onStartEdit={() => startEdit(stage)}
                 onSaveEdit={() => saveEdit(stage)}
                 onCancelEdit={cancelEdit}
-                onDelete={() => deleteStage(stage)}
+                onDelete={() => requestDelete(stage)}
               />
             ))}
           </div>
@@ -232,8 +248,74 @@ export function StageManager({ jobId, initialStages }: StageManagerProps) {
       </DndContext>
 
       <p className="mt-4 text-xs text-zinc-400">
-        Drag to reorder · Stages with applicants cannot be deleted
+        Drag to reorder · Stages with applicants will prompt you to reassign them before deletion
       </p>
+
+      {/* Delete + reassign dialog */}
+      {deleteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">
+                  Delete &ldquo;{deleteDialog.stage.name}&rdquo;?
+                </h3>
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                  {deleteDialog.stage.applicant_count} applicant
+                  {deleteDialog.stage.applicant_count !== 1 ? "s are" : " is"} currently
+                  in this stage. Choose where to move them before deleting.
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-5">
+              <label className="mb-1.5 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Move applicants to
+              </label>
+              <select
+                value={deleteDialog.moveToId}
+                onChange={(e) =>
+                  setDeleteDialog((d) => d ? { ...d, moveToId: e.target.value } : d)
+                }
+                className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              >
+                {stages
+                  .filter((s) => s.id !== deleteDialog.stage.id)
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.applicant_count} applicant{s.applicant_count !== 1 ? "s" : ""})
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteDialog(null)}
+                disabled={isPending}
+                className="rounded-lg border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => performDelete(deleteDialog.stage.id, deleteDialog.moveToId)}
+                disabled={isPending || !deleteDialog.moveToId}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                Move &amp; delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -314,10 +396,7 @@ function SortableStageRow({
           <button
             onClick={onDelete}
             disabled={isPending}
-            className={cn(
-              "text-zinc-400 hover:text-red-500 disabled:opacity-40",
-              stage.applicant_count > 0 && "cursor-not-allowed opacity-30",
-            )}
+            className="text-zinc-400 hover:text-red-500 disabled:opacity-40"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>

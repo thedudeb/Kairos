@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { auth } from "@/auth";
 import { backendFetch, BackendError } from "@/lib/api";
+import { BACKEND_URL } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { CollapsibleSection } from "@/components/admin/collapsible-section";
 import type { JobListItem, JobStatus } from "@/types/api";
@@ -45,7 +46,7 @@ export default async function AdminLandingPage() {
     error = e instanceof BackendError ? `${e.status}: ${e.body}` : String(e);
   }
 
-  const apiBase = process.env.BACKEND_URL ?? "http://localhost:8000";
+  const apiBase = BACKEND_URL;
 
   if (error) {
     const network = isLikelyNetworkFailure(error);

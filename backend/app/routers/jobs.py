@@ -221,18 +221,74 @@ def list_jobs(
     _: object = Depends(require_staff),
 ) -> list[JobListItem]:
     jobs = session.exec(select(Job).order_by(Job.created_at.desc())).all()
-    return [
-        JobListItem(
-            id=job.id,
-            title=job.title,
-            slug=job.slug,
-            status=job.status,
-            template_id=job.template_id,
-            created_at=job.created_at,
-            summary=_get_summary(session, job.id),
+    if not jobs:
+        return []
+
+    job_ids = [j.id for j in jobs]
+    now = datetime.now(timezone.utc)
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+
+    # Single aggregate query for all jobs — replaces N×1 count queries
+    count_rows = session.execute(
+        select(
+            Applicant.job_id,
+            func.count(Applicant.id).label("total"),
+            func.count(case((Applicant.submitted_at >= week_ago, 1))).label("this_week"),
+            func.count(case((Applicant.submitted_at >= month_ago, 1))).label("this_month"),
         )
-        for job in jobs
-    ]
+        .where(Applicant.job_id.in_(job_ids))
+        .group_by(Applicant.job_id)
+    ).all()
+    counts_by_job = {r.job_id: r for r in count_rows}
+
+    # Single stage distribution query for all jobs — replaces N×1 stage queries
+    stage_rows = session.execute(
+        select(
+            PipelineStage.job_id,
+            PipelineStage.id,
+            PipelineStage.name,
+            func.count(Applicant.id).label("cnt"),
+        )
+        .outerjoin(Applicant, Applicant.current_stage_id == PipelineStage.id)
+        .where(PipelineStage.job_id.in_(job_ids))
+        .group_by(
+            PipelineStage.job_id,
+            PipelineStage.id,
+            PipelineStage.name,
+            PipelineStage.sort_order,
+        )
+        .order_by(PipelineStage.sort_order)
+    ).all()
+
+    stages_by_job: dict[UUID, list] = {}
+    for r in stage_rows:
+        stages_by_job.setdefault(r.job_id, []).append(r)
+
+    result = []
+    for job in jobs:
+        counts = counts_by_job.get(job.id)
+        summary = JobSummary(
+            total_applicants=counts.total if counts else 0,
+            new_this_week=counts.this_week if counts else 0,
+            new_this_month=counts.this_month if counts else 0,
+            stage_distribution=[
+                StageDistributionItem(stage_id=r.id, stage_name=r.name, count=r.cnt)
+                for r in stages_by_job.get(job.id, [])
+            ],
+        )
+        result.append(
+            JobListItem(
+                id=job.id,
+                title=job.title,
+                slug=job.slug,
+                status=job.status,
+                template_id=job.template_id,
+                created_at=job.created_at,
+                summary=summary,
+            )
+        )
+    return result
 
 
 @router.post("/", response_model=JobOut, status_code=status.HTTP_201_CREATED)
@@ -479,12 +535,25 @@ async def rerank_all_applicants(
     """Re-score every applicant in this job — useful after editing the description."""
     _get_or_404(session, job_id)
 
-    applicant_ids = [
-        a.id for a in session.exec(select(Applicant).where(Applicant.job_id == job_id)).all()
-    ]
-    # Mark all as pending so the UI shows the spinner
+    # Fetch only IDs — no need to hydrate full Applicant objects
+    applicant_ids: list[UUID] = session.execute(
+        select(Applicant.id).where(Applicant.job_id == job_id)
+    ).scalars().all()
+
+    if not applicant_ids:
+        return {"queued": 0, "total": 0}
+
+    # Bulk-fetch existing fit scores in one query, then batch-upsert
+    existing_scores: dict[UUID, ApplicantFitScore] = {
+        s.applicant_id: s
+        for s in session.exec(
+            select(ApplicantFitScore).where(
+                ApplicantFitScore.applicant_id.in_(applicant_ids)
+            )
+        ).all()
+    }
     for aid in applicant_ids:
-        score = session.get(ApplicantFitScore, aid)
+        score = existing_scores.get(aid)
         if score is None:
             score = ApplicantFitScore(applicant_id=aid)
         score.status = RankStatus.pending

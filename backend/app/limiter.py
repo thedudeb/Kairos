@@ -12,11 +12,28 @@ from __future__ import annotations
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from starlette.requests import Request
 
 from app.config import settings
 
+
+def _get_client_ip(request: Request) -> str:
+    """Return the real client IP, honouring X-Forwarded-For when present.
+
+    Cloud Run (and most reverse proxies) append the original client IP as the
+    first entry in X-Forwarded-For.  Falling back to the TCP peer address is
+    correct for direct connections (local dev, tests).
+    """
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        ip = forwarded_for.split(",")[0].strip()
+        if ip:
+            return ip
+    return get_remote_address(request) or "0.0.0.0"
+
+
 limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=_get_client_ip,
     storage_uri=settings.redis_url,
     default_limits=[],
 )

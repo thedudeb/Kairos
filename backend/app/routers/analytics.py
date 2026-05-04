@@ -5,7 +5,7 @@ from datetime import date as DateType
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import cast, func, Date
 from sqlmodel import Session, select
@@ -17,6 +17,8 @@ from app.models.pipeline import PipelineStage
 from app.security import require_admin, require_staff
 
 router = APIRouter(prefix="/jobs/{job_id}/analytics", tags=["analytics"])
+
+_TOP_ITEMS_LIMIT = 8  # rows returned for top institutions / degree distribution
 
 
 # ─── Response schema ──────────────────────────────────────────────────────────
@@ -64,19 +66,19 @@ def get_analytics(
     if volume_from is not None or volume_to is not None:
         if volume_from is None or volume_to is None:
             raise HTTPException(
-                status_code=422,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Provide both volume_from and volume_to for a custom range.",
             )
         range_end = min(volume_to, today)
         range_start = volume_from
         if range_start > range_end:
             raise HTTPException(
-                status_code=422,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="volume_from must be on or before volume_to (after capping end to today).",
             )
         span = (range_end - range_start).days + 1
         if span > 366:
-            raise HTTPException(status_code=422, detail="Date range cannot exceed 366 days.")
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Date range cannot exceed 366 days.")
         num_days = span
     else:
         vd = volume_days if volume_days is not None else 30
@@ -148,7 +150,7 @@ def get_analytics(
         )
         .group_by(ParsedResume.top_institution)
         .order_by(func.count().desc())
-        .limit(8)
+        .limit(_TOP_ITEMS_LIMIT)
     ).all()
 
     top_institutions = [
@@ -170,7 +172,7 @@ def get_analytics(
         )
         .group_by(ParsedResume.top_degree)
         .order_by(func.count().desc())
-        .limit(8)
+        .limit(_TOP_ITEMS_LIMIT)
     ).all()
 
     degree_distribution = [

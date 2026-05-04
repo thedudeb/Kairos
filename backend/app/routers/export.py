@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import io
+from collections.abc import Generator
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -28,39 +29,27 @@ def _csv(v: str | None) -> str:
     return v
 
 
-@router.get("/applicants.csv")
-def export_applicants_csv(
-    job_id: UUID,
-    session: Session = Depends(get_session),
-    _: object = Depends(require_staff),
-) -> StreamingResponse:
-    applicants = session.exec(
-        select(Applicant)
-        .where(Applicant.job_id == job_id)
-        .order_by(Applicant.submitted_at.desc())
-    ).all()
-
-    stage_map: dict[UUID, str] = {}
-    for s in session.exec(select(PipelineStage).where(PipelineStage.job_id == job_id)).all():
-        stage_map[s.id] = s.name
-
-    parsed_map: dict[UUID, ParsedResume] = {}
-    for pr in session.exec(
-        select(ParsedResume).where(
-            ParsedResume.applicant_id.in_([a.id for a in applicants])
-        )
-    ).all():
-        parsed_map[pr.applicant_id] = pr
-
+def _stream_csv(
+    applicants: list[Applicant],
+    stage_map: dict[UUID, str],
+    parsed_map: dict[UUID, ParsedResume],
+) -> Generator[str, None, None]:
+    """Yield CSV rows one at a time so large exports never buffer fully in memory."""
     buf = io.StringIO()
     writer = csv.writer(buf)
+
+    # Header
     writer.writerow([
         "First Name", "Last Name", "Email", "Phone",
         "Stage", "Parse Status", "Submitted At",
         "Institution", "Degree", "Parsed Name", "Parsed Email",
     ])
+    yield buf.getvalue()
 
+    # Data rows — write one, yield, reset buffer
     for a in applicants:
+        buf.seek(0)
+        buf.truncate(0)
         pr = parsed_map.get(a.id)
         writer.writerow([
             _csv(a.first_name),
@@ -75,10 +64,39 @@ def export_applicants_csv(
             _csv(pr.full_name if pr else ""),
             _csv(pr.email if pr else ""),
         ])
+        yield buf.getvalue()
 
-    buf.seek(0)
+
+@router.get("/applicants.csv")
+def export_applicants_csv(
+    job_id: UUID,
+    session: Session = Depends(get_session),
+    _: object = Depends(require_staff),
+) -> StreamingResponse:
+    applicants = session.exec(
+        select(Applicant)
+        .where(Applicant.job_id == job_id)
+        .order_by(Applicant.submitted_at.desc())
+    ).all()
+
+    stage_map: dict[UUID, str] = {
+        s.id: s.name
+        for s in session.exec(
+            select(PipelineStage).where(PipelineStage.job_id == job_id)
+        ).all()
+    }
+
+    parsed_map: dict[UUID, ParsedResume] = {}
+    if applicants:
+        for pr in session.exec(
+            select(ParsedResume).where(
+                ParsedResume.applicant_id.in_([a.id for a in applicants])
+            )
+        ).all():
+            parsed_map[pr.applicant_id] = pr
+
     return StreamingResponse(
-        iter([buf.getvalue()]),
+        _stream_csv(applicants, stage_map, parsed_map),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="applicants-{job_id}.csv"'},
     )

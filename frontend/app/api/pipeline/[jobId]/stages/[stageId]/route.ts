@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { rejectCrossOriginMutation } from "@/lib/request-guards";
 
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+import { BACKEND_URL } from "@/lib/constants";
 
 async function proxy(req: NextRequest, jobId: string, stageId: string) {
   const rejected = rejectCrossOriginMutation(req);
@@ -13,7 +13,9 @@ async function proxy(req: NextRequest, jobId: string, stageId: string) {
   const body = req.method !== "GET" && req.method !== "DELETE"
     ? await req.text()
     : undefined;
-  const res = await fetch(`${BACKEND_URL}/jobs/${jobId}/pipeline/stages/${stageId}`, {
+  // Forward any query params (e.g. ?move_to=<uuid> for stage deletion with reassignment)
+  const qs = req.nextUrl.search;
+  const res = await fetch(`${BACKEND_URL}/jobs/${jobId}/pipeline/stages/${stageId}${qs}`, {
     method: req.method,
     headers: {
       "Content-Type": "application/json",

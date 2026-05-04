@@ -1,6 +1,6 @@
 "use server";
 
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+import { BACKEND_URL } from "@/lib/constants";
 
 export interface SubmitResult {
   ok: true;

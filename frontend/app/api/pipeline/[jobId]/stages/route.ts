@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { rejectCrossOriginMutation } from "@/lib/request-guards";
 
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+import { BACKEND_URL } from "@/lib/constants";
 
 async function proxy(req: NextRequest, jobId: string, extra = "") {
   const rejected = rejectCrossOriginMutation(req);

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
@@ -30,6 +29,7 @@ from app.models.pipeline import PipelineStage
 from app.schemas.public import ApplicantSubmissionResponse, PublicFormField, PublicJobListItem, PublicJobResponse
 from app.services import email as email_svc
 from app.services import storage as storage_svc
+from app.services.storage import _LOCAL_DIR as _UPLOAD_DIR
 
 log = structlog.get_logger()
 
@@ -132,7 +132,7 @@ async def submit_application(
     first_name: Annotated[str, Form(max_length=100)] = ...,
     last_name: Annotated[str, Form(max_length=100)] = ...,
     email: Annotated[EmailStr, Form()] = ...,
-    phone: Annotated[str, Form(max_length=30)] = ...,
+    phone: Annotated[str, Form(max_length=50)] = ...,
     resume: Annotated[UploadFile, File()] = ...,
 ) -> ApplicantSubmissionResponse:
     job = _get_active_job_or_raise(session, slug)
@@ -410,12 +410,12 @@ def serve_local_file(filename: str) -> FileResponse:
     if settings.environment == "production":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
 
-    local_path = Path("/tmp/recruitment-uploads") / filename
+    local_path = _UPLOAD_DIR / filename
     if not local_path.exists() or not local_path.is_file():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "file not found")
     # Prevent directory traversal
     try:
-        local_path.resolve().relative_to(Path("/tmp/recruitment-uploads").resolve())
+        local_path.resolve().relative_to(_UPLOAD_DIR.resolve())
     except ValueError:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
 

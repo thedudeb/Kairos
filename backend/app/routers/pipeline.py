@@ -8,7 +8,7 @@ from __future__ import annotations
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -105,7 +105,7 @@ def list_stages(
     return [_to_out(s, counts) for s in stages]
 
 
-@router.post("/stages", response_model=StageOut, status_code=201)
+@router.post("/stages", response_model=StageOut, status_code=status.HTTP_201_CREATED)
 def create_stage(
     job_id: UUID,
     body: StageCreate,
@@ -154,23 +154,11 @@ def update_stage(
 def delete_stage(
     job_id: UUID,
     stage_id: UUID,
+    move_to: UUID | None = Query(default=None, description="Reassign applicants to this stage before deleting"),
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ) -> None:
     stage = _get_stage_or_404(session, stage_id, job_id)
-
-    # Cannot delete if applicants are currently in this stage
-    count = session.execute(
-        select(func.count())
-        .select_from(Applicant)
-        .where(Applicant.current_stage_id == stage_id)
-    ).scalar_one()
-    if count:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"Cannot delete stage: {count} applicant(s) are currently in it. "
-            "Move them to another stage first.",
-        )
 
     # Must keep at least one stage
     total = session.execute(
@@ -182,6 +170,36 @@ def delete_stage(
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Cannot delete the last pipeline stage."
         )
+
+    # Count applicants currently in this stage
+    count = session.execute(
+        select(func.count())
+        .select_from(Applicant)
+        .where(Applicant.current_stage_id == stage_id)
+    ).scalar_one()
+
+    if count:
+        if not move_to:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"Cannot delete stage: {count} applicant(s) are currently in it. "
+                "Move them to another stage first.",
+            )
+        # Validate the target stage exists in this job and is not the same stage
+        if move_to == stage_id:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Cannot move applicants to the stage being deleted.",
+            )
+        _get_stage_or_404(session, move_to, job_id)
+        # Bulk-reassign all applicants to the target stage
+        applicants = session.exec(
+            select(Applicant).where(Applicant.current_stage_id == stage_id)
+        ).all()
+        for applicant in applicants:
+            applicant.current_stage_id = move_to
+            session.add(applicant)
+        session.flush()
 
     session.delete(stage)
     session.commit()

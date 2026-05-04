@@ -14,7 +14,6 @@ if it fails partway through.
 from __future__ import annotations
 
 import io
-import json
 import traceback
 from datetime import datetime, timezone
 from typing import Any
@@ -38,6 +37,7 @@ from app.models.applicant import (
 from app.models.job import Job, JobFormField
 from app.services import ranking as ranking_svc
 from app.services import storage as storage_svc
+from app.utils.llm import extract_json
 
 log = structlog.get_logger()
 
@@ -112,21 +112,17 @@ def _call_gemini(resume_text: str) -> dict[str, Any]:
 
     from google import genai as google_genai
 
-    client = google_genai.Client(api_key=settings.gemini_api_key)
+    client = google_genai.Client(
+        api_key=settings.gemini_api_key,
+        http_options={"timeout": 60},  # 60s — ARQ job_timeout is 120s
+    )
     prompt = _GEMINI_PROMPT.replace("{resume_text}", resume_text[:30_000])
 
     response = client.models.generate_content(
         model=settings.gemini_model,
         contents=prompt,
     )
-    raw = response.text.strip()
-
-    # Strip any accidental markdown fences Gemini sometimes adds
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1]
-        raw = raw.rsplit("```", 1)[0]
-
-    return json.loads(raw)
+    return extract_json(response.text)
 
 
 def _download_resume(storage_path: str) -> bytes:

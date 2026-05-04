@@ -46,12 +46,30 @@ class TemplateCreate(BaseModel):
     form_fields: list[TemplateFormFieldIn] = []
     assessment_questions: list[TemplateAssessmentQuestionIn] = []
 
+    @field_validator("assessment_questions")
+    @classmethod
+    def _require_at_least_one_question(
+        cls, v: list[TemplateAssessmentQuestionIn]
+    ) -> list[TemplateAssessmentQuestionIn]:
+        if len(v) < 1:
+            raise ValueError("A template must have at least one assessment question.")
+        return v
+
 
 class TemplateUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
     form_fields: list[TemplateFormFieldIn] | None = None
     assessment_questions: list[TemplateAssessmentQuestionIn] | None = None
+
+    @field_validator("assessment_questions")
+    @classmethod
+    def _require_at_least_one_question(
+        cls, v: list[TemplateAssessmentQuestionIn] | None
+    ) -> list[TemplateAssessmentQuestionIn] | None:
+        if v is not None and len(v) < 1:
+            raise ValueError("A template must have at least one assessment question.")
+        return v
 
 
 class TemplateOut(BaseModel):

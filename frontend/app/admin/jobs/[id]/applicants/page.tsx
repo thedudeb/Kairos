@@ -5,6 +5,8 @@ import type { ApplicantListItem, JobOut, PipelineStage } from "@/types/api";
 import { getCachedJob } from "../job-data";
 import { ApplicantTable } from "./applicant-table";
 
+const PAGE_SIZE = 50;
+
 async function fetchJob(jobId: string): Promise<JobOut | null> {
   try {
     return await getCachedJob(jobId);
@@ -66,6 +68,9 @@ export default async function ApplicantsPage({
       : [sp.skills]
     : [];
 
+  const page = Math.max(1, parseInt((sp.page as string) ?? "1", 10) || 1);
+  const offset = (page - 1) * PAGE_SIZE;
+
   const [job, stages, availableSkills, applicants] = await Promise.all([
     fetchJob(id),
     fetchStages(id),
@@ -80,7 +85,8 @@ export default async function ApplicantsPage({
       ...(skillsParam.length ? { skills: skillsParam } : {}),
       sort_by: (sp.sort_by as string) || "submitted_at",
       sort_dir: (sp.sort_dir as string) || "desc",
-      limit: "200",
+      offset: offset.toString(),
+      limit: PAGE_SIZE.toString(),
     }),
   ]);
 
@@ -105,6 +111,8 @@ export default async function ApplicantsPage({
         activeSkills={skillsParam}
         sortBy={(sp.sort_by as string) || "submitted_at"}
         sortDir={(sp.sort_dir as string) || "desc"}
+        page={page}
+        pageSize={PAGE_SIZE}
         canExport={isAdmin}
       />
     </div>

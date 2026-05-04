@@ -59,7 +59,7 @@ export async function deleteTemplate(id: string): Promise<{ ok: true } | { ok: f
     revalidatePath("/admin/templates");
     redirect("/admin/templates");
   } catch (e) {
-    if ((e as Error).message === "NEXT_REDIRECT") throw e;
+    if (e instanceof Error && "digest" in e && String((e as { digest?: unknown }).digest).startsWith("NEXT_REDIRECT")) throw e;
     return { ok: false, error: e instanceof BackendError ? e.body : String(e) };
   }
 }

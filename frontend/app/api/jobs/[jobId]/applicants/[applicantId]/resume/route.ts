@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+import { BACKEND_URL } from "@/lib/constants";
 
 /** Proxies authenticated PDF bytes so react-pdf runs same-origin (cookies + PDF.js range requests). */
 export async function GET(

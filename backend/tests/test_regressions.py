@@ -30,7 +30,7 @@ from app.routers.jobs import delete_job
 from app.schemas.template import TemplateFormFieldIn, TemplateUpdate
 from app.services import storage as storage_svc
 from app.services import webhook as webhook_svc
-from app.services.webhook import deliver_with_retry, encrypt_api_key
+from app.services.webhook import deliver_with_retry, encrypt_api_key, fire_webhook
 from app.utils.slug import unique_job_slug
 from app.utils.url import assert_safe_webhook_url
 
@@ -197,8 +197,12 @@ class RegressionTests(unittest.TestCase):
 
             response = Mock(status_code=200, text="ok")
             with patch("app.services.webhook.httpx.post", return_value=response) as post:
-                deliver_with_retry(transition_id=transition_id, integration_id=integration_id)
-                deliver_with_retry(transition_id=transition_id, integration_id=integration_id)
+                # fire_webhook is the sync delivery primitive; calling it twice
+                # with the same (transition, integration, attempt_number) must
+                # result in only one outbound HTTP POST due to the DB unique
+                # constraint on (transition_id, integration_id, attempt_number).
+                fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
+                fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
 
             self.assertEqual(post.call_count, 1)
         finally:

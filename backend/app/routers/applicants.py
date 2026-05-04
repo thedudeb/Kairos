@@ -70,10 +70,6 @@ def _get_applicant_or_404(session: Session, applicant_id: UUID, job_id: UUID) ->
     return applicant
 
 
-def _stage_name(session: Session, stage_id: UUID) -> str:
-    stage = session.get(PipelineStage, stage_id)
-    return stage.name if stage else "Unknown"
-
 
 def _resume_url(storage_path: str) -> str:
     try:
@@ -111,7 +107,6 @@ def _build_parsed_resume(
         phone=pr.phone,
         top_institution=pr.top_institution,
         top_degree=pr.top_degree,
-        raw_json=pr.raw_json,
         confidence_notes=pr.confidence_notes,
         parsed_at=pr.parsed_at,
         education=[EducationOut.model_validate(e) for e in education],
@@ -128,14 +123,21 @@ def _build_custom_fields(
             ApplicantCustomFieldValue.applicant_id == applicant_id
         )
     ).all()
+    if not rows:
+        return []
+
+    # Single bulk fetch for all referenced form fields — eliminates N point queries
+    field_ids = list({row.job_form_field_id for row in rows})
+    field_map = {
+        f.id: f
+        for f in session.exec(select(JobFormField).where(JobFormField.id.in_(field_ids))).all()
+    }
 
     result = []
     for row in rows:
-        field = session.get(JobFormField, row.job_form_field_id)
+        field = field_map.get(row.job_form_field_id)
         label = field.label if field else str(row.job_form_field_id)
-        file_url = None
-        if row.value_file_gcs_path:
-            file_url = _resume_url(row.value_file_gcs_path)
+        file_url = _resume_url(row.value_file_gcs_path) if row.value_file_gcs_path else None
         result.append(
             CustomFieldValueOut(
                 id=row.id,
@@ -148,37 +150,39 @@ def _build_custom_fields(
     return result
 
 
-def _build_notes(session: Session, applicant_id: UUID) -> list[NoteOut]:
-    rows = session.exec(
-        select(ApplicantNote)
-        .where(ApplicantNote.applicant_id == applicant_id)
-        .order_by(ApplicantNote.created_at.desc())
-    ).all()
-
-    result = []
-    for row in rows:
-        author = session.get(User, row.author_id)
-        author_name = (
-            author.name or author.email if author else "Unknown"
+def _build_notes(
+    note_rows: list[ApplicantNote],
+    user_map: dict[UUID, User],
+) -> list[NoteOut]:
+    """Build NoteOut list from pre-fetched rows + shared user map. Zero DB queries."""
+    return [
+        NoteOut(
+            id=row.id,
+            body=row.body,
+            author_name=(
+                (user_map[row.author_id].name or user_map[row.author_id].email)
+                if row.author_id in user_map
+                else "Unknown"
+            ),
+            created_at=row.created_at,
         )
-        result.append(
-            NoteOut(
-                id=row.id,
-                body=row.body,
-                author_name=author_name,
-                created_at=row.created_at,
-            )
-        )
-    return result
+        for row in sorted(note_rows, key=lambda n: n.created_at, reverse=True)
+    ]
 
 
 def _build_activity(
-    session: Session, applicant: Applicant
+    applicant: Applicant,
+    transitions: list[StageTransition],
+    note_rows: list[ApplicantNote],
+    user_map: dict[UUID, User],
+    stage_map: dict[UUID, PipelineStage],
 ) -> list[ActivityEvent]:
-    events: list[ActivityEvent] = []
+    """Build activity timeline from pre-fetched data — zero additional DB queries.
 
-    # Application received
-    events.append(
+    Accepts the same note_rows already fetched for _build_notes so the notes
+    table is never queried twice for the same applicant detail request.
+    """
+    events: list[ActivityEvent] = [
         ActivityEvent(
             id=applicant.id,
             kind="application_received",
@@ -186,25 +190,19 @@ def _build_activity(
             actor_name=None,
             detail="Application submitted",
         )
-    )
-
-    # Stage transitions
-    transitions = session.exec(
-        select(StageTransition)
-        .where(StageTransition.applicant_id == applicant.id)
-        .order_by(StageTransition.created_at)
-    ).all()
+    ]
 
     for t in transitions:
-        actor = session.get(User, t.actor_id) if t.actor_id else None
+        actor = user_map.get(t.actor_id) if t.actor_id else None
         actor_name = (actor.name or actor.email) if actor else "System"
-        to_stage = session.get(PipelineStage, t.to_stage_id)
-        from_stage = session.get(PipelineStage, t.from_stage_id) if t.from_stage_id else None
+        to_stage = stage_map.get(t.to_stage_id)
+        from_stage = stage_map.get(t.from_stage_id) if t.from_stage_id else None
         to_name = to_stage.name if to_stage else "?"
-        if from_stage:
-            detail = f'Moved from "{from_stage.name}" to "{to_name}"'
-        else:
-            detail = f'Placed in "{to_name}"'
+        detail = (
+            f'Moved from "{from_stage.name}" to "{to_name}"'
+            if from_stage
+            else f'Placed in "{to_name}"'
+        )
         if t.notes:
             detail += f" — {t.notes}"
         events.append(
@@ -217,15 +215,8 @@ def _build_activity(
             )
         )
 
-    # Notes
-    notes = session.exec(
-        select(ApplicantNote)
-        .where(ApplicantNote.applicant_id == applicant.id)
-        .order_by(ApplicantNote.created_at)
-    ).all()
-
-    for n in notes:
-        author = session.get(User, n.author_id)
+    for n in note_rows:
+        author = user_map.get(n.author_id)
         author_name = (author.name or author.email) if author else "Unknown"
         events.append(
             ActivityEvent(
@@ -320,14 +311,12 @@ def list_applicants(
         q = q.where(func.lower(ParsedResume.top_degree).like(f"%{degree.lower()}%"))
     if date_from:
         try:
-            from datetime import date
             dt_from = datetime.fromisoformat(date_from)
             q = q.where(Applicant.submitted_at >= dt_from)
         except ValueError:
             pass
     if date_to:
         try:
-            from datetime import date
             dt_to = datetime.fromisoformat(date_to)
             q = q.where(Applicant.submitted_at <= dt_to)
         except ValueError:
@@ -425,13 +414,17 @@ def list_applicants(
     q = q.offset(offset).limit(limit)
     rows = session.execute(q).all()
 
-    # Build a stage-name cache to avoid N+1
+    # Build a stage-name cache with a single bulk query — eliminates N+1
+    unique_stage_ids = list({a.current_stage_id for a, _pr, _fs in rows})
     stage_cache: dict[UUID, str] = {}
+    if unique_stage_ids:
+        stage_rows = session.exec(
+            select(PipelineStage).where(PipelineStage.id.in_(unique_stage_ids))
+        ).all()
+        stage_cache = {s.id: s.name for s in stage_rows}
 
     result = []
     for a, pr, fs in rows:
-        if a.current_stage_id not in stage_cache:
-            stage_cache[a.current_stage_id] = _stage_name(session, a.current_stage_id)
         result.append(
             ApplicantListItem(
                 id=a.id,
@@ -441,7 +434,7 @@ def list_applicants(
                 phone=a.phone,
                 parse_status=a.parse_status,
                 current_stage_id=a.current_stage_id,
-                current_stage_name=stage_cache[a.current_stage_id],
+                current_stage_name=stage_cache.get(a.current_stage_id, "Unknown"),
                 top_institution=pr.top_institution if pr else None,
                 top_degree=pr.top_degree if pr else None,
                 submitted_at=a.submitted_at,
@@ -464,8 +457,47 @@ def get_applicant(
     _: User = Depends(require_staff),
 ) -> ApplicantDetail:
     applicant = _get_applicant_or_404(session, applicant_id, job_id)
-
     fs = session.get(ApplicantFitScore, applicant.id)
+
+    # ── Pre-fetch all relational data in bulk to eliminate N+1 queries ───────
+
+    # Fetch transitions and notes once each
+    transitions = session.exec(
+        select(StageTransition)
+        .where(StageTransition.applicant_id == applicant.id)
+        .order_by(StageTransition.created_at)
+    ).all()
+
+    note_rows = session.exec(
+        select(ApplicantNote)
+        .where(ApplicantNote.applicant_id == applicant.id)
+        .order_by(ApplicantNote.created_at)
+    ).all()
+
+    # Bulk-fetch all users referenced by transitions and notes (one IN query)
+    user_ids = (
+        {t.actor_id for t in transitions if t.actor_id}
+        | {n.author_id for n in note_rows}
+    )
+    user_map: dict[UUID, User] = (
+        {u.id: u for u in session.exec(select(User).where(User.id.in_(list(user_ids)))).all()}
+        if user_ids else {}
+    )
+
+    # Bulk-fetch all pipeline stages referenced by transitions + current stage (one IN query)
+    stage_ids = (
+        {t.to_stage_id for t in transitions}
+        | {t.from_stage_id for t in transitions if t.from_stage_id}
+        | {applicant.current_stage_id}
+    )
+    stage_map: dict[UUID, PipelineStage] = {
+        s.id: s
+        for s in session.exec(select(PipelineStage).where(PipelineStage.id.in_(list(stage_ids)))).all()
+    }
+
+    current_stage = stage_map.get(applicant.current_stage_id)
+    current_stage_name = current_stage.name if current_stage else "Unknown"
+
     return ApplicantDetail(
         id=applicant.id,
         job_id=applicant.job_id,
@@ -477,14 +509,14 @@ def get_applicant(
         parse_error=applicant.parse_error,
         parse_attempts=applicant.parse_attempts,
         current_stage_id=applicant.current_stage_id,
-        current_stage_name=_stage_name(session, applicant.current_stage_id),
+        current_stage_name=current_stage_name,
         submitted_at=applicant.submitted_at,
         stage_entered_at=applicant.stage_entered_at,
         resume_url=_resume_url(applicant.resume_gcs_path),
         parsed_resume=_build_parsed_resume(session, applicant.id),
         custom_fields=_build_custom_fields(session, applicant.id),
-        notes=_build_notes(session, applicant.id),
-        activity=_build_activity(session, applicant),
+        notes=_build_notes(note_rows, user_map),
+        activity=_build_activity(applicant, transitions, note_rows, user_map, stage_map),
         fit_score=fs.fit_score if fs else None,
         fit_status=fs.status if fs else None,
         fit_score_detail=FitScoreOut.model_validate(fs) if fs else None,
@@ -598,7 +630,7 @@ def move_stage(
 
 # ─── Add note ─────────────────────────────────────────────────────────────────
 
-@router.post("/{applicant_id}/notes", response_model=NoteOut, status_code=201)
+@router.post("/{applicant_id}/notes", response_model=NoteOut, status_code=status.HTTP_201_CREATED)
 def add_note(
     job_id: UUID,
     applicant_id: UUID,
@@ -839,7 +871,6 @@ def correct_parsed_resume(
         phone=pr.phone,
         top_institution=pr.top_institution,
         top_degree=pr.top_degree,
-        raw_json=pr.raw_json,
         education=[
             EducationOut.model_validate(e)
             for e in session.exec(
