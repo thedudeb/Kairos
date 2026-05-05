@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { ParticleCanvas } from "@/components/particle-canvas";
+import { SignInButton } from "@/components/sign-in-button";
+import { DemoButton } from "@/components/demo-button";
 
 export default async function HomePage() {
   const session = await auth();
@@ -67,15 +69,15 @@ export default async function HomePage() {
             </svg>
           </Link>
         ) : (
-          <Link
-            href="/sign-in"
-            className="group relative inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 transition-all hover:shadow-indigo-500/40 hover:scale-[1.02]"
-          >
-            Sign in with Google
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="transition-transform group-hover:translate-x-0.5">
-              <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </Link>
+          <div className="flex w-full max-w-xs flex-col gap-3">
+            <SignInButton callbackUrl="/admin" />
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-white/10" />
+              <span className="text-xs text-zinc-600">or</span>
+              <div className="h-px flex-1 bg-white/10" />
+            </div>
+            <DemoButton callbackUrl="/admin" />
+          </div>
         )}
 
         {/* Feature pills */}
