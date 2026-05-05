@@ -1,8 +1,0 @@
-{
-  "name": "kairos",
-  "version": "0.1.0",
-  "private": true,
-  "dependencies": {
-    "next": "16.2.4"
-  }
-}
