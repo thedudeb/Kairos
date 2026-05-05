@@ -80,6 +80,7 @@ from app.models.applicant import (
 )
 from app.models.job import Job, JobFormField
 from app.models.pipeline import PipelineStage
+from app.models.template import Template, TemplateAssessmentQuestion, TemplateFormField
 from app.models.user import User
 
 # ─── Shared skill pools ───────────────────────────────────────────────────────
@@ -255,6 +256,100 @@ def seed_job(
     print(f"  ✓ {title} — {len(applicants_data)} applicants, {len(stages)} stages")
 
 
+# ─── Template seeding ─────────────────────────────────────────────────────────
+
+def seed_templates(session: Session) -> None:
+    """Create reusable template library if not already present."""
+    if session.exec(select(Template)).first():
+        print("  ✓ Templates — already seeded, skipping")
+        return
+
+    templates = [
+        {
+            "name": "Senior Software Engineer",
+            "description": "For senior IC and staff-level engineering roles. Includes GitHub, work-auth, and a three-question technical assessment.",
+            "fields": [
+                ("GitHub profile URL", "url", False),
+                ("LinkedIn profile URL", "url", False),
+                ("Years of professional experience", "number", True),
+                ("Work authorisation status", "dropdown", True),
+                ("Why do you want to join us?", "textarea", False),
+            ],
+            "questions": [
+                ("Walk us through a technically complex system you designed end-to-end. What tradeoffs did you make?", 180, 2),
+                ("Describe a time you improved system reliability or performance significantly. What was the impact?", 120, 2),
+                ("How do you approach mentoring junior engineers or elevating the technical quality of a team?", 120, 2),
+            ],
+        },
+        {
+            "name": "Product Designer",
+            "description": "For product and UX design roles. Requires a portfolio and covers design process and cross-functional collaboration.",
+            "fields": [
+                ("Portfolio URL", "url", True),
+                ("Dribbble or Behance URL", "url", False),
+                ("Primary design tool", "dropdown", False),
+                ("Brief description of your design process", "textarea", True),
+            ],
+            "questions": [
+                ("Walk us through a project in your portfolio. What problem were you solving and how did you measure success?", 180, 2),
+                ("Describe how you handle conflicting feedback from engineering and product stakeholders.", 120, 2),
+                ("How do you approach accessibility in your design work?", 90, 2),
+            ],
+        },
+        {
+            "name": "General Application",
+            "description": "Lightweight template for roles that don't require a structured assessment — ops, admin, or early-stage sourcing.",
+            "fields": [
+                ("LinkedIn profile URL", "url", False),
+                ("How did you hear about this role?", "dropdown", False),
+                ("Anything else you'd like us to know?", "textarea", False),
+            ],
+            "questions": [],
+        },
+        {
+            "name": "Data / Analytics",
+            "description": "For data engineering, analytics engineering, and data science roles. Covers stack, SQL depth, and stakeholder communication.",
+            "fields": [
+                ("LinkedIn profile URL", "url", False),
+                ("Preferred data stack (e.g. dbt + Snowflake + Airflow)", "text", True),
+                ("Link to a dashboard, notebook, or project you're proud of", "url", False),
+                ("Years of SQL experience", "number", True),
+            ],
+            "questions": [
+                ("Walk us through a data pipeline or model you built. What were the requirements and how did you handle data quality?", 150, 2),
+                ("How do you communicate complex data findings to a non-technical audience?", 90, 2),
+                ("Describe a time a data issue impacted a business decision. How did you catch and resolve it?", 120, 2),
+            ],
+        },
+    ]
+
+    for t_data in templates:
+        template = Template(name=t_data["name"], description=t_data["description"])
+        session.add(template)
+        session.flush()
+
+        for order, (label, ftype, required) in enumerate(t_data["fields"]):
+            session.add(TemplateFormField(
+                template_id=template.id,
+                label=label,
+                field_type=FieldType(ftype),
+                is_required=required,
+                sort_order=order,
+            ))
+
+        for order, (text, duration, attempts) in enumerate(t_data["questions"]):
+            session.add(TemplateAssessmentQuestion(
+                template_id=template.id,
+                question_text=text,
+                max_duration_seconds=duration,
+                max_attempts=attempts,
+                sort_order=order,
+            ))
+
+    session.commit()
+    print(f"  ✓ Templates — {len(templates)} created")
+
+
 # ─── Job definitions ──────────────────────────────────────────────────────────
 
 SWE_STAGES = [
@@ -409,6 +504,8 @@ def seed() -> None:
     print("Seeding demo data…")
     with Session(engine) as session:
         admin = session.exec(select(User)).first()
+
+        seed_templates(session)
 
         seed_job(
             session,
