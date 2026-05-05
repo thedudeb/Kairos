@@ -10,7 +10,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  closestCenter,
+  pointerWithin,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -81,6 +81,7 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage, read
   const [byStage, setByStage] = useState<Record<string, ApplicantListItem[]>>(initialByStage);
   const [activeCard, setActiveCard] = useState<ApplicantListItem | null>(null);
   const [activeColumn, setActiveColumn] = useState<Stage | null>(null);
+  const [dragOriginStage, setDragOriginStage] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const router = useRouter();
 
@@ -116,6 +117,7 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage, read
       setActiveColumn(stages.find((s) => `${COL}${s.id}` === id) ?? null);
     } else {
       setActiveCard(findApplicant(id));
+      setDragOriginStage(findStageForApplicant(id));
     }
   }
 
@@ -146,6 +148,8 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage, read
     const { active, over } = event;
     setActiveCard(null);
     setActiveColumn(null);
+    const originStage = dragOriginStage;
+    setDragOriginStage(null);
     if (!over) return;
 
     const activeId = active.id as string;
@@ -170,9 +174,9 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage, read
 
     // ── Card drop ──
     const toStage = resolveToStage(over.id as string);
-    if (!toStage) return;
-    const applicant = findApplicant(activeId);
-    if (!applicant || applicant.current_stage_id === toStage) return;
+    // Use originStage (pre-drag) not current_stage_id — handleDragOver may have
+    // already updated current_stage_id optimistically, making the check wrong.
+    if (!toStage || !originStage || originStage === toStage) return;
 
     startTransition(async () => {
       const result = await moveApplicantStage(jobId, activeId, toStage);
@@ -199,7 +203,7 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage, read
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={pointerWithin}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
