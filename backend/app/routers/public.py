@@ -81,8 +81,10 @@ def get_public_job(request: Request, slug: str, session: Session = Depends(get_s
     """Return public job info. Draft jobs return 404 (not published yet)."""
     job = _get_active_job_or_raise(session, slug)
 
-    if job.status in (JobStatus.draft, JobStatus.closed):
+    if job.status == JobStatus.draft:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "job not found")
+    # Closed jobs return their data with status='closed' so the frontend
+    # can render the "no longer accepting applications" page as the spec requires.
 
     form_fields = session.exec(
         select(JobFormField)

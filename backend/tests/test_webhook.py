@@ -24,10 +24,16 @@ from tests.conftest import make_applicant, make_job
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 @pytest.fixture()
-def webhook_engine(engine):
-    """Point the webhook service at the test engine for the duration of the test."""
+def webhook_engine(engine, monkeypatch):
+    """Point the webhook service at the test engine for the duration of the test.
+
+    Also bypasses live DNS resolution: the SSRF check is unit-tested directly
+    below (test_production_rejects_*), so delivery tests should not depend on
+    external network availability.
+    """
     original = webhook_svc.engine
     webhook_svc.engine = engine
+    monkeypatch.setattr("app.services.webhook.assert_safe_webhook_url", lambda url: None)
     yield engine
     webhook_svc.engine = original
 

@@ -24,15 +24,16 @@ export function ReparseButton({
   const router = useRouter();
 
   const canReparse = parseStatus === "failed" || parseStatus === "parsed" || parseStatus === "needs_manual";
-  if (readOnly) return null;
-  if (!canReparse) return null;
 
-  // Auto-clear the feedback toast after 3 seconds
+  // Hook must be called before any conditional returns (Rules of Hooks)
   useEffect(() => {
     if (!feedback) return;
     const t = setTimeout(() => setFeedback(null), 3000);
     return () => clearTimeout(t);
   }, [feedback]);
+
+  if (readOnly) return null;
+  if (!canReparse) return null;
 
   function handleClick() {
     startTransition(async () => {

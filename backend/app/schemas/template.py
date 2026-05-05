@@ -46,14 +46,8 @@ class TemplateCreate(BaseModel):
     form_fields: list[TemplateFormFieldIn] = []
     assessment_questions: list[TemplateAssessmentQuestionIn] = []
 
-    @field_validator("assessment_questions")
-    @classmethod
-    def _require_at_least_one_question(
-        cls, v: list[TemplateAssessmentQuestionIn]
-    ) -> list[TemplateAssessmentQuestionIn]:
-        if len(v) < 1:
-            raise ValueError("A template must have at least one assessment question.")
-        return v
+    # Assessment questions are optional — some roles do not require a structured
+    # assessment payload (e.g. internships, ops roles). An empty list is valid.
 
 
 class TemplateUpdate(BaseModel):
