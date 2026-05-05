@@ -80,7 +80,7 @@ URLs to have open in tabs before recording:
 
 [Open careers index in a new tab]
 
-> The public side. The careers index is intentionally separate from the admin — it's a Server Component fetching only active jobs, with `noindex` and `nofollow` headers on all careers and admin routes so the pages aren't crawled or indexed. The spec was strict on this — listings shouldn't be indexable.
+> The public side. The careers index is intentionally separate from the admin — it's a Server Component fetching only active jobs, with `noindex`, `nofollow`, `noarchive`, `nosnippet`, and the experimental `nollms` headers on all careers routes so the pages aren't crawled, cached, or scraped by AI. The spec was strict on this — listings shouldn't be indexable.
 
 [Click into a job, e.g. Senior Software Engineer]
 

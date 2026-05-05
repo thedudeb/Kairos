@@ -63,7 +63,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/careers/:path*",
-        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow, noarchive, nosnippet, nollms" }],
       },
     ];
   },
