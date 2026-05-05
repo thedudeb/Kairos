@@ -22,8 +22,7 @@ const nextConfig: NextConfig = {
     const scriptSrc = process.env.NODE_ENV === "production"
       ? "script-src 'self' 'strict-dynamic' 'unsafe-inline'"
       : "script-src 'self' 'strict-dynamic' 'unsafe-inline' 'unsafe-eval'";
-    const headers: { key: string; value: string }[] = [
-      { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive, nosnippet, nollms" },
+    const securityHeaders: { key: string; value: string }[] = [
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
       { key: "X-Frame-Options", value: "DENY" },
@@ -32,13 +31,13 @@ const nextConfig: NextConfig = {
     // Only in production — sending HSTS during `next dev` makes browsers cache HTTPS-only for
     // localhost, then http://localhost:3000 stops working (no TLS in dev).
     if (process.env.NODE_ENV === "production") {
-      headers.push({
+      securityHeaders.push({
         key: "Strict-Transport-Security",
         value: "max-age=31536000; includeSubDomains; preload",
       });
     }
 
-    headers.push({
+    securityHeaders.push({
       key: "Content-Security-Policy",
       value: [
         "default-src 'self'",
@@ -53,7 +52,20 @@ const nextConfig: NextConfig = {
       ].join("; "),
     });
 
-    return [{ source: "/:path*", headers }];
+    return [
+      // Security headers on every route
+      { source: "/:path*", headers: securityHeaders },
+      // Noindex only on admin and careers — keeps link previews working for
+      // the root page while still hiding internal routes from search engines.
+      {
+        source: "/admin/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
+      {
+        source: "/careers/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
+    ];
   },
 };
 
