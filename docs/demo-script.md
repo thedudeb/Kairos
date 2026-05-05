@@ -80,7 +80,7 @@ URLs to have open in tabs before recording:
 
 [Open careers index in a new tab]
 
-> The public side. The careers index is intentionally separate from the admin — it's a Server Component fetching only active jobs, with `noindex`, `nofollow`, `noarchive`, and the experimental `nollms` meta tags so the pages aren't scraped. The spec was strict on this — listings shouldn't be indexable.
+> The public side. The careers index is intentionally separate from the admin — it's a Server Component fetching only active jobs, with `noindex` and `nofollow` headers on all careers and admin routes so the pages aren't crawled or indexed. The spec was strict on this — listings shouldn't be indexable.
 
 [Click into a job, e.g. Senior Software Engineer]
 
@@ -250,7 +250,7 @@ URLs to have open in tabs before recording:
 
 [Click "Export CSV"]
 
-> CSV export honors all the active filters, so you can export "everyone in Interview from Stanford" with one click. Export goes through a streamed `StreamingResponse` so we don't materialize the whole result set in memory.
+> CSV export pulls every applicant for this job — name, email, phone, stage, parse status, institution, degree — all in one click. It goes through a streamed `StreamingResponse` with a JOIN query so we never load the full result set into memory at once.
 
 [Brief architecture summary, no specific click — could just stay on dashboard]
 
