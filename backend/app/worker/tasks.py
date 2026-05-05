@@ -125,23 +125,52 @@ def _call_gemini(resume_text: str) -> dict[str, Any]:
     return extract_json(response.text)
 
 
+class ResumeNotFound(Exception):
+    """Resume file is missing from storage — re-uploading is the only fix."""
+
+
 def _download_resume(storage_path: str) -> bytes:
-    """Download resume bytes from GCS or local /tmp."""
+    """Download resume bytes from GCS or local /tmp.
+
+    Raises ResumeNotFound if the file is missing — caller treats this as a
+    permanent failure rather than letting downstream code (Gemini, pdfplumber)
+    waste time and time out on an empty/missing file.
+    """
+    if not storage_path:
+        raise ResumeNotFound("No resume on file for this applicant.")
+
     if storage_path.startswith("local://"):
         from pathlib import Path
 
-        local_path = storage_path[len("local://"):]
-        return Path(local_path).read_bytes()
+        local_path = Path(storage_path[len("local://"):])
+        if not local_path.is_file():
+            raise ResumeNotFound(
+                "Resume file is missing from local storage. The applicant "
+                "needs to re-upload their resume."
+            )
+        return local_path.read_bytes()
 
     if storage_path.startswith("gs://"):
         from google.cloud import storage as gcs
+        from google.api_core import exceptions as gcs_exc
 
         rest = storage_path[5:]
         bucket_name, blob_path = rest.split("/", 1)
         client = gcs.Client()
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(blob_path)
-        return blob.download_as_bytes()
+        try:
+            if not blob.exists():
+                raise ResumeNotFound(
+                    "Resume file is missing from cloud storage. The applicant "
+                    "needs to re-upload their resume."
+                )
+            return blob.download_as_bytes()
+        except gcs_exc.NotFound as e:
+            raise ResumeNotFound(
+                "Resume file is missing from cloud storage. The applicant "
+                "needs to re-upload their resume."
+            ) from e
 
     raise ValueError(f"Unknown storage path scheme: {storage_path!r}")
 
@@ -178,8 +207,24 @@ async def parse_resume(ctx: dict, *, applicant_id: str) -> str:
         resume_gcs_path = applicant.resume_gcs_path  # capture before session closes
 
     try:
-        # 1. Download
-        resume_bytes = _download_resume(resume_gcs_path)
+        # 1. Download — fail-fast if file is missing rather than letting
+        #    Gemini timeout (60s) on empty input.
+        try:
+            resume_bytes = _download_resume(resume_gcs_path)
+        except ResumeNotFound as e:
+            log.warning(
+                "parse_resume.resume_missing",
+                applicant_id=applicant_id,
+                path=resume_gcs_path,
+            )
+            with Session(engine) as session:
+                app_row = session.get(Applicant, UUID(applicant_id))
+                if app_row:
+                    app_row.parse_status = ParseStatus.failed
+                    app_row.parse_error = str(e)
+                    session.add(app_row)
+                    session.commit()
+            return "resume_not_found"
 
         # 2. Extract text
         resume_text = _extract_text(resume_bytes)
