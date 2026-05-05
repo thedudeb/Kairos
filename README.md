@@ -211,7 +211,7 @@ Fill in after deployment so reviewers can test your hosted build:
 
 | Surface | URL |
 |---------|-----|
-| Frontend (admin dashboard + careers portal) | `https://frontend-thedude-da236722.vercel.app` |
+| Frontend (admin dashboard + careers portal) | `https://frontend-rho-five-38.vercel.app` |
 | Backend API (Swagger at `/docs`) | `https://recruitment-api-189067700467.us-central1.run.app` |
 
 Important paths:
