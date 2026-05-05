@@ -9,8 +9,6 @@ import { Loader2 } from "lucide-react";
 export function DemoButton({ callbackUrl }: { callbackUrl: string }) {
   const [loading, setLoading] = useState(false);
 
-  if (process.env.NEXT_PUBLIC_DEMO_ENABLED !== "true") return null;
-
   async function handleClick() {
     setLoading(true);
     await signIn("credentials", { callbackUrl });
