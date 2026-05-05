@@ -7,6 +7,9 @@
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": { "moby": false },
     "ghcr.io/va-h/devcontainers-features/uv:1": {}
   },
+  "remoteEnv": {
+    "NEXT_PUBLIC_DEMO_ENABLED": "true"
+  },
   "forwardPorts": [3000, 8000, 5432, 6379],
   "portsAttributes": {
     "3000": { "label": "Frontend (Next.js)", "onAutoForward": "openBrowser" },

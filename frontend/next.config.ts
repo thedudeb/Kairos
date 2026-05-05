@@ -15,9 +15,13 @@ const nextConfig: NextConfig = {
     },
   },
   async headers() {
+    // 'strict-dynamic' makes 'unsafe-inline' a no-op in CSP3-aware browsers:
+    // only scripts explicitly trusted by a nonce/hash can load further scripts.
+    // 'unsafe-inline' is kept for CSP2 fallback. 'unsafe-eval' is removed in
+    // production (Next.js doesn't need it; only the dev HMR runtime does).
     const scriptSrc = process.env.NODE_ENV === "production"
-      ? "script-src 'self' 'unsafe-inline'"
-      : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
+      ? "script-src 'self' 'strict-dynamic' 'unsafe-inline'"
+      : "script-src 'self' 'strict-dynamic' 'unsafe-inline' 'unsafe-eval'";
     const headers: { key: string; value: string }[] = [
       { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive, nosnippet, nollms" },
       { key: "X-Content-Type-Options", value: "nosniff" },

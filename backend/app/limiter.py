@@ -20,13 +20,17 @@ from app.config import settings
 def _get_client_ip(request: Request) -> str:
     """Return the real client IP, honouring X-Forwarded-For when present.
 
-    Cloud Run (and most reverse proxies) append the original client IP as the
-    first entry in X-Forwarded-For.  Falling back to the TCP peer address is
-    correct for direct connections (local dev, tests).
+    We take the *last* entry in X-Forwarded-For, not the first. Cloud Load
+    Balancing (and Cloud Run's upstream proxy) *appends* the true client IP,
+    so the rightmost entry is the one the trusted infrastructure added and
+    cannot be spoofed by the client. Taking [0] would let an attacker bypass
+    rate limits by sending a forged X-Forwarded-For header.
+
+    Falls back to the TCP peer address for direct connections (local dev, tests).
     """
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
-        ip = forwarded_for.split(",")[0].strip()
+        ip = forwarded_for.split(",")[-1].strip()
         if ip:
             return ip
     return get_remote_address(request) or "0.0.0.0"

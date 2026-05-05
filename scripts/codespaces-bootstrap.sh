@@ -41,6 +41,9 @@ if [ ! -f backend/.env ] || [ ! -f frontend/.env.local ]; then
       -e "s|^AUTH_SECRET=.*|AUTH_SECRET=$AUTH_SECRET|" \
       -e "s|^INTERNAL_API_KEY=.*|INTERNAL_API_KEY=$INTERNAL_API_KEY|" \
       frontend/.env.local.example > frontend/.env.local
+    # Enable the demo login button so reviewers can sign in without Google OAuth.
+    echo "" >> frontend/.env.local
+    echo "NEXT_PUBLIC_DEMO_ENABLED=true" >> frontend/.env.local
   fi
 fi
 

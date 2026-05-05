@@ -6,7 +6,7 @@
                           +---------------------------+
                           |       Vercel (CDN)        |
                           |                           |
-   Applicant browser ---> |   Next.js 15 App Router   |
+   Applicant browser ---> |   Next.js 16 App Router   |
    Admin browser     ---> |   - Public job pages      |
                           |   - Admin dashboard       |
                           |   - Auth.js (Google OAuth)|
@@ -47,7 +47,7 @@
 
 | Layer        | Choice                                                              |
 |--------------|---------------------------------------------------------------------|
-| Frontend     | Next.js 15+ (App Router, TS), Tailwind, shadcn/ui, TanStack Query   |
+| Frontend     | Next.js 16 (App Router, TS), Tailwind, shadcn/ui, TanStack Query v5   |
 | Auth         | Auth.js v5 (NextAuth) with Google OAuth                             |
 | Backend API  | FastAPI (Python 3.12), SQLModel, Alembic, Pydantic v2               |
 | Worker       | ARQ (Redis-based async job runner) — same image, separate service   |
@@ -76,6 +76,12 @@ needs `--no-cpu-throttling` to make progress between requests anyway, and superv
 hides worker health from Cloud Run's own probes.
 
 ## Authentication flow
+
+All `/admin/**` routes are protected at the Next.js edge by `middleware.ts`
+(Auth.js v5). Unauthenticated requests are redirected to `/sign-in` with a
+`callbackUrl` query param before any page component runs — there is no
+client-side redirect flash and no server component that can accidentally render
+admin data without a session.
 
 ```
 1. User clicks "Sign in with Google"

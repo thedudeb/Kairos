@@ -41,12 +41,20 @@ def assert_safe_webhook_url(url: str) -> None:
         if "Webhook URL" in str(exc):
             raise
         # Host is a hostname — resolve it and check every returned IP.
+        # DNS failure is treated as unsafe: silently ignoring it would let an
+        # attacker configure a host that transiently fails DNS during validation
+        # but later resolves to a private/metadata address (DNS-rebinding).
         try:
             results = socket.getaddrinfo(host, None)
+            if not results:
+                raise ValueError(f"Webhook host '{host}' did not resolve to any address.")
             for *_, sockaddr in results:
                 _check_addr(ipaddress.ip_address(sockaddr[0]))
-        except (socket.gaierror, OSError):
-            pass  # DNS failure is handled at delivery time
+        except (socket.gaierror, OSError) as dns_exc:
+            raise ValueError(
+                f"Webhook host '{host}' could not be resolved. "
+                "Use a publicly reachable hostname."
+            ) from dns_exc
 
 
 def assert_https_document_url(url: str) -> None:
