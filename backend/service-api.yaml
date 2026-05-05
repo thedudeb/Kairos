@@ -59,6 +59,6 @@ spec:
                   name: recruitment-gemini-api-key
                   key: latest
             - name: FRONTEND_ORIGIN
-              value: "https://YOUR_VERCEL_URL.vercel.app"
+              value: "https://frontend-thedude-da236722.vercel.app"
             - name: ENVIRONMENT
               value: "production"
