@@ -4,6 +4,8 @@ import { ParticleCanvas } from "@/components/particle-canvas";
 import { SignInButton } from "@/components/sign-in-button";
 import { DemoButton } from "@/components/demo-button";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const session = await auth();
 
