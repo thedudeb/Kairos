@@ -16,10 +16,11 @@ import {
   SortableContext,
   useSortable,
   horizontalListSortingStrategy,
+  verticalListSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useDroppable, useDraggable } from "@dnd-kit/core";
+import { useDroppable } from "@dnd-kit/core";
 import {
   GripVertical, Pencil, Trash2, Check, X, Loader2, GripHorizontal,
 } from "lucide-react";
@@ -174,10 +175,22 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage, read
 
     // ── Card drop ──
     const toStage = resolveToStage(over.id as string);
-    // Use originStage (pre-drag) not current_stage_id — handleDragOver may have
-    // already updated current_stage_id optimistically, making the check wrong.
-    if (!toStage || !originStage || originStage === toStage) return;
+    if (!toStage || !originStage) return;
 
+    // ── Intra-column reorder (drag up/down within same column) ──
+    if (originStage === toStage) {
+      const overId = over.id as string;
+      setByStage((prev) => {
+        const cards = prev[toStage];
+        const oldIdx = cards.findIndex((c) => c.id === activeId);
+        const newIdx = cards.findIndex((c) => c.id === overId);
+        if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return prev;
+        return { ...prev, [toStage]: arrayMove(cards, oldIdx, newIdx) };
+      });
+      return;
+    }
+
+    // ── Cross-column move ──
     startTransition(async () => {
       const result = await moveApplicantStage(jobId, activeId, toStage);
       if (!result.ok) router.refresh();
@@ -419,9 +432,11 @@ function KanbanColumn({
             : "bg-zinc-100 dark:bg-zinc-900",
         )}
       >
-        {cards.map((applicant) => (
-          <ApplicantCard key={applicant.id} applicant={applicant} jobId={jobId} readOnly={readOnly} />
-        ))}
+        <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+          {cards.map((applicant) => (
+            <ApplicantCard key={applicant.id} applicant={applicant} jobId={jobId} readOnly={readOnly} />
+          ))}
+        </SortableContext>
         {cards.length === 0 && (
           <div className="flex flex-1 items-center justify-center py-8 text-xs text-zinc-400">
             {readOnly ? "No applicants" : "Drop here"}
@@ -465,15 +480,28 @@ function ApplicantCard({
   isOverlay?: boolean;
   readOnly?: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging: dragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging: dragging,
+  } = useSortable({
     id: applicant.id,
     data: { type: "card" },
     disabled: readOnly,
   });
 
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
   return (
     <div
       ref={setNodeRef}
+      style={style}
       {...attributes}
       className={cn(
         "group rounded-lg border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-800",
