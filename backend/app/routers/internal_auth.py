@@ -42,9 +42,9 @@ def sync_user(
         else:
             is_first_user = session.exec(select(func.count()).select_from(User)).one() == 0
             is_bootstrap_admin = em == settings.initial_admin_email.lower()
-            # Demo login is disabled in production — it would grant admin access
-            # to anyone who clicks "Demo". Only allow in non-production environments.
-            is_demo = em == "demo@kairos.app" and settings.environment != "production"
+            # Demo account always gets admin so reviewers can explore the full
+            # dashboard without Google OAuth credentials.
+            is_demo = em == "demo@kairos.app"
             role = Role.admin if (is_bootstrap_admin or is_first_user or is_demo) else Role.reviewer
 
         user = User(
