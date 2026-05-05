@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Component, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  FileX,
   Loader2,
   ZoomIn,
   ZoomOut,
@@ -18,6 +19,30 @@ function configureWorker() {
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 }
 
+// ─── Error boundary ────────────────────────────────────────────────────────────
+// react-pdf's Document can throw after a 404 (worker gets destroyed then
+// getStructTree is called on null), which would crash React hydration. This
+// boundary catches any render-time throw from the PDF viewer and shows a
+// graceful fallback instead of taking down the whole page.
+interface EBState { hasError: boolean }
+class PdfErrorBoundary extends Component<{ children: ReactNode }, EBState> {
+  state: EBState = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err: Error) { console.error("[pdf-viewer] caught render error:", err); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-2 py-12 text-zinc-400">
+          <FileX className="h-8 w-8" />
+          <p className="text-sm">Resume could not be displayed.</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 interface ResumePdfViewerProps {
   jobId: string;
   applicantId: string;
@@ -48,14 +73,24 @@ export function ResumePdfViewer({ jobId, applicantId }: ResumePdfViewerProps) {
   }, []);
 
   const onLoadError = useCallback((err: Error) => {
-    console.error(err);
-    setError(err.message || "Could not load PDF");
+    console.error("[pdf-viewer] load error:", err);
+    setError("Resume is not available for this applicant.");
   }, []);
 
   if (!configured) {
     return (
       <div className="flex items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 py-16 dark:border-zinc-700 dark:bg-zinc-900/40">
         <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+      </div>
+    );
+  }
+
+  // Show friendly message instead of broken viewer when PDF fails to load
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-200 bg-zinc-50 py-12 text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900/40">
+        <FileX className="h-7 w-7" />
+        <p className="text-sm">{error}</p>
       </div>
     );
   }
@@ -114,35 +149,31 @@ export function ResumePdfViewer({ jobId, applicantId }: ResumePdfViewerProps) {
         </div>
       </div>
 
-      {error ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-400">
-          {error}
-        </p>
-      ) : null}
-
-      {/* Viewer */}
-      <div className="max-h-[min(720px,70vh)] overflow-auto rounded-lg border border-zinc-200 bg-zinc-100/80 dark:border-zinc-700 dark:bg-zinc-950">
-        <Document
-          file={fileUrl}
-          options={{ disableRange: true, disableStream: true }}
-          loading={
-            <div className="flex justify-center py-16">
-              <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
-            </div>
-          }
-          onLoadSuccess={onLoadSuccess}
-          onLoadError={onLoadError}
-          className="flex justify-center py-4"
-        >
-          <Page
-            pageNumber={page}
-            scale={scale}
-            className="shadow-lg [&_.react-pdf__Page__canvas]:mx-auto"
-            renderTextLayer
-            renderAnnotationLayer
-          />
-        </Document>
-      </div>
+      {/* Viewer — wrapped in error boundary so a worker crash can't kill the page */}
+      <PdfErrorBoundary>
+        <div className="max-h-[min(720px,70vh)] overflow-auto rounded-lg border border-zinc-200 bg-zinc-100/80 dark:border-zinc-700 dark:bg-zinc-950">
+          <Document
+            file={fileUrl}
+            options={{ disableRange: true, disableStream: true }}
+            loading={
+              <div className="flex justify-center py-16">
+                <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
+              </div>
+            }
+            onLoadSuccess={onLoadSuccess}
+            onLoadError={onLoadError}
+            className="flex justify-center py-4"
+          >
+            <Page
+              pageNumber={page}
+              scale={scale}
+              className="shadow-lg [&_.react-pdf__Page__canvas]:mx-auto"
+              renderTextLayer
+              renderAnnotationLayer
+            />
+          </Document>
+        </div>
+      </PdfErrorBoundary>
     </div>
   );
 }
