@@ -5,10 +5,12 @@ const PUBLIC_PATHS = [
   "/",
   "/sign-in",
   "/api/auth",
+  "/opengraph-image",
+  "/icon",
 ];
 
 const PUBLIC_PREFIXES = [
-  "/careers/",
+  "/careers",
   "/api/auth/",
   "/_next/",
   "/favicon",

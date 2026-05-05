@@ -24,6 +24,15 @@ async function syncWithBackend(email: string, name?: string | null, imageUrl?: s
   }>;
 }
 
+console.log("[auth] ENV CHECK", {
+  hasGoogleId: !!process.env.AUTH_GOOGLE_ID,
+  googleIdLength: process.env.AUTH_GOOGLE_ID?.length,
+  hasGoogleSecret: !!process.env.AUTH_GOOGLE_SECRET,
+  hasSecret: !!process.env.AUTH_SECRET,
+  authUrl: process.env.AUTH_URL,
+  trustHost: process.env.AUTH_TRUST_HOST,
+});
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Google({
@@ -34,16 +43,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       name: "Demo",
       credentials: {},
       async authorize() {
-        const data = await syncWithBackend("demo@kairos.app", "Demo User", null);
-        if (!data) return null;
-        return {
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.name ?? "Demo User",
-          backendId: data.user.id,
-          role: data.user.role,
-          backendToken: data.session_token,
-        };
+        try {
+          const data = await syncWithBackend("demo@kairos.app", "Demo User", null);
+          if (!data) return null;
+          return {
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.name ?? "Demo User",
+            backendId: data.user.id,
+            role: data.user.role,
+            backendToken: data.session_token,
+          };
+        } catch (err) {
+          console.error("[auth] syncWithBackend threw during demo authorize:", err);
+          return null;
+        }
       },
     }),
   ],
@@ -63,16 +77,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return false;
       }
 
-      const data = await syncWithBackend(user.email, user.name, user.image);
-      if (!data) {
-        console.error("[auth] user-sync failed during sign-in");
+      try {
+        const data = await syncWithBackend(user.email, user.name, user.image);
+        if (!data) {
+          console.error("[auth] user-sync failed during sign-in");
+          return false;
+        }
+        user.backendId = data.user.id;
+        user.role = data.user.role;
+        user.backendToken = data.session_token;
+        return true;
+      } catch (err) {
+        console.error("[auth] syncWithBackend threw during sign-in:", err);
         return false;
       }
-
-      user.backendId = data.user.id;
-      user.role = data.user.role;
-      user.backendToken = data.session_token;
-      return true;
     },
 
     async jwt({ token, user }) {
