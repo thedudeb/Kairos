@@ -396,9 +396,10 @@ async def rank_applicant(_ctx: dict, *, applicant_id: str) -> str:
         _upsert_score(session, aid, status=RankStatus.ranking, error=None)
         session.commit()
 
-    # Call Gemini outside the DB session
+    # Call Gemini outside the DB session — run in thread so event loop stays responsive
     try:
-        result = ranking_svc.score_applicant(
+        result = await asyncio.to_thread(
+            ranking_svc.score_applicant,
             job_title=job_title,
             job_description=job_description,
             parsed_resume=parsed_resume,

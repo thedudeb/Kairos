@@ -140,7 +140,7 @@ def score_applicant(
 
     client = google_genai.Client(
         api_key=settings.gemini_api_key,
-        http_options={"timeout": 60},  # 60s — ARQ job_timeout is 120s
+        http_options={"timeout": 90_000},  # 90s in ms — ARQ job_timeout is 180s
     )
     candidate_summary = _summarize_candidate(parsed_resume, custom_field_values or [])
 
