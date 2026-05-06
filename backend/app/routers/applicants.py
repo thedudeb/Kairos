@@ -521,6 +521,56 @@ def get_applicant(
     )
 
 
+@router.head("/{applicant_id}/resume", status_code=status.HTTP_200_OK)
+def head_resume_pdf(
+    job_id: UUID,
+    applicant_id: UUID,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_staff),
+) -> Response:
+    """Lightweight existence check for the PDF viewer's pre-flight.
+
+    Avoids downloading the full PDF just to confirm it exists. Returns 200 if
+    the applicant has a resume path set and the underlying file is reachable
+    in storage; 404 otherwise. The frontend uses this to decide whether to
+    mount react-pdf's Document at all (skipping it on 404 prevents the worker
+    from spamming the console with sendWithPromise errors).
+    """
+    _get_job_or_404(session, job_id)
+    applicant = _get_applicant_or_404(session, applicant_id, job_id)
+
+    if not applicant.resume_gcs_path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "resume not found")
+
+    path = applicant.resume_gcs_path
+    try:
+        if path.startswith("local://"):
+            from pathlib import Path
+
+            if not Path(path[len("local://"):]).is_file():
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "resume file missing")
+        elif path.startswith("gs://"):
+            from google.cloud import storage as gcs
+
+            rest = path[5:]
+            bucket_name, blob_path = rest.split("/", 1)
+            client = gcs.Client()
+            blob = client.bucket(bucket_name).blob(blob_path)
+            if not blob.exists():
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "resume file missing")
+        # Unknown scheme falls through to 200 — the GET would surface the error
+    except HTTPException:
+        raise
+    except Exception:
+        log.exception(
+            "applicant.resume_head_failed",
+            applicant_id=str(applicant_id),
+        )
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "storage check failed") from None
+
+    return Response(status_code=status.HTTP_200_OK)
+
+
 @router.get("/{applicant_id}/resume")
 def download_resume_pdf(
     job_id: UUID,
