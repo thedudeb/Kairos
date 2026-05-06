@@ -55,30 +55,11 @@ export function ResumePdfViewer({ jobId, applicantId }: ResumePdfViewerProps) {
   );
 
   const [configured, setConfigured] = useState(false);
-  const [available, setAvailable] = useState<boolean | null>(null);
   useEffect(() => {
     configureWorker();
     const id = requestAnimationFrame(() => setConfigured(true));
     return () => cancelAnimationFrame(id);
   }, []);
-
-  // Pre-flight check: don't mount the PDF Document at all if the file is
-  // unreachable. This prevents react-pdf's worker from spamming the console
-  // with sendWithPromise/sendWithStream errors after a 404.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(fileUrl, { method: "HEAD" });
-        if (!cancelled) setAvailable(res.ok);
-      } catch {
-        if (!cancelled) setAvailable(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [fileUrl]);
 
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [page, setPage] = useState(1);
@@ -96,7 +77,7 @@ export function ResumePdfViewer({ jobId, applicantId }: ResumePdfViewerProps) {
     setError("Resume is not available for this applicant.");
   }, []);
 
-  if (!configured || available === null) {
+  if (!configured) {
     return (
       <div className="flex items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 py-16 dark:border-zinc-700 dark:bg-zinc-900/40">
         <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
@@ -104,18 +85,9 @@ export function ResumePdfViewer({ jobId, applicantId }: ResumePdfViewerProps) {
     );
   }
 
-  // PDF file is missing — skip the viewer entirely (avoids react-pdf worker
-  // crashes that spam the console with sendWithPromise/sendWithStream errors).
-  if (available === false) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-200 bg-zinc-50 py-12 text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900/40">
-        <FileX className="h-7 w-7" />
-        <p className="text-sm">Resume is not available for this applicant.</p>
-      </div>
-    );
-  }
-
-  // Show friendly message instead of broken viewer when PDF fails to load
+  // Show friendly message instead of broken viewer when PDF fails to load.
+  // (onLoadError fires for 404s; the PdfErrorBoundary catches any worker
+  // crashes from missing/corrupt files, so this is layered defense.)
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-200 bg-zinc-50 py-12 text-zinc-400 dark:border-zinc-700 dark:bg-zinc-900/40">
