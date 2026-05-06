@@ -45,7 +45,7 @@ class WorkerSettings:
     queue_name = settings.arq_queue_name
     max_jobs = 4
     max_tries = 3      # retry failed jobs at most 3 times before marking dead
-    job_timeout = 120  # seconds per job
+    job_timeout = 180  # seconds per job — Gemini 2.5 Pro needs up to 90s
     keep_result = 3600  # keep result in Redis for 1 hour
     # Default poll_delay is 0.5s (2 Redis commands/sec = ~173K/day idle).
     # Resume parsing is not latency-sensitive — 5 s delay is imperceptible
