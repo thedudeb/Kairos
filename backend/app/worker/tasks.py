@@ -116,7 +116,7 @@ def _call_gemini(resume_text: str) -> dict[str, Any]:
 
     client = google_genai.Client(
         api_key=settings.gemini_api_key,
-        http_options={"timeout": 90},  # 90s — ARQ job_timeout is 180s
+        http_options={"timeout": 90_000},  # 90s in ms — ARQ job_timeout is 180s
     )
     prompt = _GEMINI_PROMPT.replace("{resume_text}", resume_text[:30_000])
 
