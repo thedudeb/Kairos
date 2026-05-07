@@ -13,6 +13,7 @@ if it fails partway through.
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import traceback
 from datetime import datetime, timezone
@@ -105,6 +106,7 @@ def _call_gemini(resume_text: str) -> dict[str, Any]:
     """Call Gemini and parse the JSON response.
 
     Returns an empty dict if the API key is not configured.
+    Intended to be called via asyncio.to_thread() — it makes blocking HTTP calls.
     """
     if not settings.gemini_api_key:
         log.warning("gemini.skipped.no_api_key")
@@ -114,7 +116,7 @@ def _call_gemini(resume_text: str) -> dict[str, Any]:
 
     client = google_genai.Client(
         api_key=settings.gemini_api_key,
-        http_options={"timeout": 60},  # 60s — ARQ job_timeout is 120s
+        http_options={"timeout": 90_000},  # 90s in ms — ARQ job_timeout is 180s
     )
     prompt = _GEMINI_PROMPT.replace("{resume_text}", resume_text[:30_000])
 
@@ -231,8 +233,8 @@ async def parse_resume(ctx: dict, *, applicant_id: str) -> str:
         if not resume_text.strip():
             raise ValueError("Could not extract any text from the resume PDF.")
 
-        # 3. LLM parse
-        parsed: dict[str, Any] = _call_gemini(resume_text)
+        # 3. LLM parse — run in thread so the event loop stays responsive
+        parsed: dict[str, Any] = await asyncio.to_thread(_call_gemini, resume_text)
 
         # 4. Persist results
         with Session(engine) as session:
@@ -394,9 +396,10 @@ async def rank_applicant(_ctx: dict, *, applicant_id: str) -> str:
         _upsert_score(session, aid, status=RankStatus.ranking, error=None)
         session.commit()
 
-    # Call Gemini outside the DB session
+    # Call Gemini outside the DB session — run in thread so event loop stays responsive
     try:
-        result = ranking_svc.score_applicant(
+        result = await asyncio.to_thread(
+            ranking_svc.score_applicant,
             job_title=job_title,
             job_description=job_description,
             parsed_resume=parsed_resume,
