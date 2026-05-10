@@ -11,6 +11,7 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 from fastapi.responses import Response
 from sqlalchemy import func, or_
 from sqlmodel import Session, select
@@ -46,6 +47,8 @@ from app.schemas.applicant import (
     WorkOut,
 )
 from app.security import require_admin, require_staff
+from app.services import email as email_svc
+from app.services import outreach as outreach_svc
 from app.services import storage as storage_svc
 from app.services.webhook import deliver_with_retry, trigger_integrations_for_transition
 
@@ -942,3 +945,88 @@ def correct_parsed_resume(
             ).all()
         ],
     )
+
+
+# ─── AI Outreach ───────────────────────────────────────────────────────────────
+
+class OutreachDraftRequest(BaseModel):
+    stage_name: str
+    job_title: str
+
+
+class OutreachDraftResponse(BaseModel):
+    subject: str
+    body: str
+
+
+class OutreachSendRequest(BaseModel):
+    subject: str
+    body: str
+
+
+@router.post("/{applicant_id}/draft-outreach", response_model=OutreachDraftResponse)
+def draft_outreach(
+    job_id: UUID,
+    applicant_id: UUID,
+    body: OutreachDraftRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
+) -> OutreachDraftResponse:
+    """Ask Gemini to draft a personalized outreach email for a candidate."""
+    applicant = _get_applicant_or_404(session, applicant_id, job_id)
+    pr = session.get(ParsedResume, applicant_id)
+    parsed_resume = pr.raw_json if pr and pr.raw_json else {}
+
+    # Fall back to applicant name if parsing never ran
+    if not parsed_resume.get("full_name"):
+        parsed_resume = {
+            **parsed_resume,
+            "full_name": f"{applicant.first_name} {applicant.last_name}".strip(),
+        }
+
+    result = outreach_svc.draft_outreach(
+        job_title=body.job_title,
+        stage_name=body.stage_name,
+        parsed_resume=parsed_resume,
+    )
+
+    if result is None:
+        # Gemini unavailable — return a sensible blank-ish template
+        first_name = applicant.first_name or "there"
+        return OutreachDraftResponse(
+            subject=f"Update on your application — {body.job_title}",
+            body=(
+                f"Hi {first_name},\n\n"
+                f"Thank you for your interest in the {body.job_title} position. "
+                f"I'm reaching out to let you know that we'd like to move you forward "
+                f"to the {body.stage_name} stage.\n\n"
+                "Please let me know if you have any questions.\n\nBest regards,"
+            ),
+        )
+
+    return OutreachDraftResponse(subject=result["subject"], body=result["body"])
+
+
+@router.post("/{applicant_id}/send-outreach", status_code=204)
+def send_outreach(
+    job_id: UUID,
+    applicant_id: UUID,
+    body: OutreachSendRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin),
+) -> None:
+    """Send the admin-edited outreach email to the candidate."""
+    applicant = _get_applicant_or_404(session, applicant_id, job_id)
+
+    subject = body.subject.strip()[:500]
+    email_body = body.body.strip()[:5000]
+
+    if not subject or not email_body:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Subject and body are required.")
+
+    email_svc.send_outreach_email(
+        to=applicant.email,
+        subject=subject,
+        body=email_body,
+    )
+    log.info("outreach.sent", applicant_id=str(applicant_id), to=applicant.email)

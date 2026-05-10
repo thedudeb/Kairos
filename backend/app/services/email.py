@@ -87,3 +87,56 @@ def send_application_confirmation(
         log.info("email.sent", to=to, job_title=job_title)
     except Exception:
         log.exception("email.delivery_failed", to=to, job_title=job_title)
+
+
+def send_outreach_email(
+    *,
+    to: str,
+    subject: str,
+    body: str,
+) -> None:
+    """Send an admin-authored outreach email to a candidate.
+
+    Body is plain text — wrapped in a minimal HTML shell so email clients
+    render it cleanly. Silently logs if RESEND_API_KEY is not set.
+    """
+    if not settings.resend_api_key:
+        log.warning(
+            "outreach_email.skipped.no_api_key",
+            to=to,
+            note="Set RESEND_API_KEY to enable real email delivery",
+        )
+        return
+
+    try:
+        import resend as resend_sdk
+
+        escaped_body = html_lib.escape(body).replace("\n", "<br>")
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:system-ui,-apple-system,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 20px">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;border:1px solid #e5e7eb;padding:40px;max-width:600px">
+        <tr><td>
+          <p style="margin:0;font-size:15px;color:#374151;line-height:1.7">{escaped_body}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+        resend_sdk.api_key = settings.resend_api_key
+        resend_sdk.Emails.send(
+            {
+                "from": settings.email_from,
+                "to": [to],
+                "subject": subject,
+                "html": html,
+            }
+        )
+        log.info("outreach_email.sent", to=to)
+    except Exception:
+        log.exception("outreach_email.delivery_failed", to=to)

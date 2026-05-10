@@ -3,6 +3,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { ArrowLeft, ExternalLink, FileText, RefreshCw, GraduationCap, Briefcase, Mail, Phone, Clock } from "lucide-react";
 import { backendFetch } from "@/lib/api";
+import { getCachedJob } from "../../job-data";
 import type { ApplicantDetail, PipelineStage } from "@/types/api";
 import { ParseStatusBadge } from "../parse-status-badge";
 import { StageMover } from "./stage-mover";
@@ -61,9 +62,10 @@ export default async function ApplicantDetailPage({
 }) {
   const { id: jobId, applicantId } = await params;
 
-  const [applicant, stages] = await Promise.all([
+  const [applicant, stages, job] = await Promise.all([
     fetchApplicant(jobId, applicantId),
     fetchStages(jobId),
+    getCachedJob(jobId).catch(() => null),
   ]);
 
   if (!applicant) notFound();
@@ -364,6 +366,9 @@ export default async function ApplicantDetailPage({
               <StageMover
                 jobId={jobId}
                 applicantId={applicantId}
+                applicantName={`${applicant.first_name} ${applicant.last_name}`.trim()}
+                applicantEmail={applicant.email}
+                jobTitle={job?.title ?? ""}
                 stages={stages}
                 currentStageId={applicant.current_stage_id}
                 readOnly={!isAdmin}

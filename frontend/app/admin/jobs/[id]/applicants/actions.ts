@@ -169,3 +169,38 @@ export async function rerankAllApplicants(
   revalidatePath(`/admin/jobs/${jobId}/applicants`);
   return { ok: true, queued: data.queued ?? 0 };
 }
+
+export async function draftOutreach(
+  jobId: string,
+  applicantId: string,
+  stageName: string,
+  jobTitle: string,
+): Promise<{ ok: boolean; subject?: string; body?: string; error?: string }> {
+  const res = await authedFetch(
+    `/jobs/${jobId}/applicants/${applicantId}/draft-outreach`,
+    {
+      method: "POST",
+      body: JSON.stringify({ stage_name: stageName, job_title: jobTitle }),
+    },
+  );
+  if (!res.ok) return { ok: false, error: "Failed to generate draft" };
+  const data = (await res.json()) as { subject: string; body: string };
+  return { ok: true, subject: data.subject, body: data.body };
+}
+
+export async function sendOutreach(
+  jobId: string,
+  applicantId: string,
+  subject: string,
+  body: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await authedFetch(
+    `/jobs/${jobId}/applicants/${applicantId}/send-outreach`,
+    {
+      method: "POST",
+      body: JSON.stringify({ subject, body }),
+    },
+  );
+  if (!res.ok) return { ok: false, error: "Failed to send email" };
+  return { ok: true };
+}
