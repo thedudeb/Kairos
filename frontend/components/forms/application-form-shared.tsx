@@ -67,11 +67,14 @@ export function Field({
   label,
   required,
   hint,
+  error,
   children,
 }: {
   label: string;
   required?: boolean;
   hint?: string;
+  /** Inline error message rendered below the input. */
+  error?: string | null;
   children: React.ReactNode;
 }) {
   return (
@@ -84,6 +87,11 @@ export function Field({
         )}
       </label>
       {children}
+      {error && (
+        <p className="mt-1.5 text-xs text-red-600 dark:text-red-400" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

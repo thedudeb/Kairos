@@ -19,6 +19,30 @@ interface ApplicationFormProps {
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
+type FieldErrors = Partial<Record<"phone", string>>;
+
+/**
+ * Validate a phone number. Permissive enough for international formats
+ * (spaces, dashes, parens, dots, leading +) but rejects pure-text inputs.
+ *
+ * Returns null when valid, otherwise an error message suitable for inline
+ * display. The check counts actual digits (must be 7–15 per E.164) and
+ * confirms the original string only contains digits + common separators —
+ * so "abc def" and "5551234 ext. 99" both fail, but "+1 (555) 123-4567"
+ * passes.
+ */
+function validatePhone(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return "Phone number is required.";
+  if (!/^[+\d\s().\-]+$/.test(trimmed)) {
+    return "Phone number can only contain digits, spaces, +, -, ( ) and dots.";
+  }
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length < 7) return "Phone number is too short.";
+  if (digits.length > 15) return "Phone number is too long.";
+  return null;
+}
+
 export function ApplicationForm({ slug, customFields }: ApplicationFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
@@ -27,6 +51,7 @@ export function ApplicationForm({ slug, customFields }: ApplicationFormProps) {
   const [successMessage, setSuccessMessage] = useState<string>("");
   const [resumeFilename, setResumeFilename] = useState<string | null>(null);
   const [customFileNames, setCustomFileNames] = useState<Record<string, string>>({});
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   function handleResumeChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -63,14 +88,35 @@ export function ApplicationForm({ slug, customFields }: ApplicationFormProps) {
     }
   }
 
+  function handlePhoneChange(e: React.ChangeEvent<HTMLInputElement>) {
+    // Only re-validate live once the user has already seen an error — avoid
+    // yelling at them while they're still typing the first number.
+    if (fieldErrors.phone) {
+      const err = validatePhone(e.target.value);
+      setFieldErrors((prev) => ({ ...prev, phone: err ?? undefined }));
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!formRef.current) return;
 
     setErrorMessage(null);
-    setState("submitting");
 
+    // Client-side validation before hitting the server.
     const formData = new FormData(formRef.current);
+    const phoneRaw = (formData.get("phone") as string | null) ?? "";
+    const phoneError = validatePhone(phoneRaw);
+    if (phoneError) {
+      setFieldErrors({ phone: phoneError });
+      // Focus the phone field so the user can correct it immediately.
+      const phoneInput = formRef.current.querySelector<HTMLInputElement>('input[name="phone"]');
+      phoneInput?.focus();
+      return;
+    }
+    setFieldErrors({});
+
+    setState("submitting");
 
     startTransition(async () => {
       const result: SubmitApplicationResult = await submitApplication(slug, formData);
@@ -144,13 +190,18 @@ export function ApplicationForm({ slug, customFields }: ApplicationFormProps) {
         />
       </Field>
 
-      <Field label="Phone number" required>
+      <Field label="Phone number" required error={fieldErrors.phone}>
         <input
           name="phone"
           type="tel"
+          inputMode="tel"
           required
           autoComplete="tel"
           placeholder="+1 (555) 000-0000"
+          pattern="^[+\d\s().\-]+$"
+          aria-invalid={fieldErrors.phone ? true : undefined}
+          aria-describedby={fieldErrors.phone ? "phone-error" : undefined}
+          onChange={handlePhoneChange}
           className={APPLICATION_INPUT_CLASS}
           disabled={isPending}
         />

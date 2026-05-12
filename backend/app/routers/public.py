@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 from typing import Annotated
 from uuid import UUID
 
@@ -146,6 +147,29 @@ async def submit_application(
         )
     if job.status == JobStatus.draft:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "job not found")
+
+    # ── Phone validation ─────────────────────────────────────────────────────
+    # Mirrors the client-side rule in application-form.tsx so a request that
+    # bypasses the browser (curl, scripted bot) still gets a clear 422.
+    # Permissive: allows digits, spaces, +, -, ( ), dots. Counts actual digits
+    # for a 7–15 length check (E.164 range).
+    phone_clean = phone.strip()
+    if not re.fullmatch(r"[+\d\s().\-]+", phone_clean):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Phone number can only contain digits, spaces, +, -, ( ) and dots.",
+        )
+    digit_count = sum(c.isdigit() for c in phone_clean)
+    if digit_count < 7:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Phone number is too short.",
+        )
+    if digit_count > 15:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Phone number is too long.",
+        )
 
     # ── Duplicate-email check (per-job) ──────────────────────────────────────
     existing = session.execute(
