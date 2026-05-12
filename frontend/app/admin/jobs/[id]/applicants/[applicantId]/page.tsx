@@ -183,9 +183,37 @@ export default async function ApplicantDetailPage({
                 </div>
               </div>
 
-              {applicant.parse_status === "pending" && (
-                <p className="text-sm text-zinc-400">Resume parsing will begin shortly.</p>
-              )}
+              {applicant.parse_status === "pending" && (() => {
+                // Stuck-pending detection. If submitted_at is more than ~2
+                // minutes in the past, the worker almost certainly isn't
+                // processing this applicant — either Redis is unreachable
+                // (parse never enqueued), the worker service is down, or it
+                // crashed mid-job. Telling the admin "will begin shortly"
+                // in that case is a lie. Surface the real situation and
+                // make Re-parse the obvious action.
+                const submittedAt = new Date(applicant.submitted_at).getTime();
+                const stuckThresholdMs = 2 * 60 * 1000;
+                const isStuck = Date.now() - submittedAt > stuckThresholdMs;
+                if (!isStuck) {
+                  return (
+                    <p className="text-sm text-zinc-400">
+                      Resume parsing will begin shortly.
+                    </p>
+                  );
+                }
+                return (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/15 dark:text-amber-300">
+                    <p className="font-semibold">Parsing hasn&apos;t started.</p>
+                    <p className="mt-1 text-xs leading-relaxed">
+                      This applicant submitted more than two minutes ago and
+                      parsing still hasn&apos;t begun. The background worker
+                      may be unavailable. Click <strong>Re-parse</strong>{" "}
+                      above to retry — if the worker is reachable, parsing
+                      will start within a few seconds.
+                    </p>
+                  </div>
+                );
+              })()}
               {applicant.parse_status === "parsing" && (
                 <div className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400">
                   <RefreshCw className="h-4 w-4 animate-spin" /> Parsing resume…

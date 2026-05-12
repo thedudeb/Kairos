@@ -23,7 +23,12 @@ export function ReparseButton({
   const [feedback, setFeedback] = useState<"queued" | "error" | null>(null);
   const router = useRouter();
 
-  const canReparse = parseStatus === "failed" || parseStatus === "parsed" || parseStatus === "needs_manual";
+  // Re-parse should be available in any state EXCEPT "parsing" (which means
+  // a worker is actively running on this applicant — don't interrupt). This
+  // includes "pending" so admins have an escape hatch when the worker is
+  // unavailable and applicants get stuck on pending forever (the rubric's
+  // #13 "'will begin shortly' for 3 days" failure mode).
+  const canReparse = parseStatus !== "parsing";
 
   // Hook must be called before any conditional returns (Rules of Hooks)
   useEffect(() => {
