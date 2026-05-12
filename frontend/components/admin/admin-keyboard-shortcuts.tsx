@@ -28,6 +28,22 @@ function isQuestionMarkHelp(e: KeyboardEvent): boolean {
   return e.code === "Slash" && e.shiftKey;
 }
 
+/** Blur the focused element if it's an input/textarea, so subsequent
+ *  global shortcuts (which correctly ignore typing contexts) can fire again.
+ *  This is the fix for "shortcuts stopped working after I pressed /":
+ *  pressing Esc inside the search returns focus to the page body. */
+function blurIfTyping(): void {
+  const active = document.activeElement;
+  if (
+    active instanceof HTMLElement &&
+    (active.tagName === "INPUT" ||
+      active.tagName === "TEXTAREA" ||
+      active.isContentEditable)
+  ) {
+    active.blur();
+  }
+}
+
 export function AdminKeyboardShortcuts() {
   const router = useRouter();
   const pathname = usePathname();
@@ -55,21 +71,40 @@ export function AdminKeyboardShortcuts() {
       const target = e.target;
       const typing = isTypingContext(target);
 
-      // Help dialog: Esc / ? close; ignore other shortcuts leaking to the page behind.
-      if (helpOpenRef.current) {
-        if (e.key === "Escape") {
-          e.preventDefault();
+      // ── Always-on: Esc from anywhere ────────────────────────────────────
+      // Closes help, clears any pending chord, and blurs the search input.
+      // This is the global "reset the keyboard state" hatch — important
+      // because without it, a user who pressed / to focus search and then
+      // typed in it has no obvious way to "exit" so other shortcuts work
+      // again. Pressing Esc now does the right thing from anywhere.
+      if (e.key === "Escape") {
+        let did = false;
+        if (helpOpenRef.current) {
           setHelpOpen(false);
-          return;
+          did = true;
         }
+        if (gChordAtRef.current !== 0) {
+          gChordAtRef.current = 0;
+          did = true;
+        }
+        if (typing) {
+          blurIfTyping();
+          did = true;
+        }
+        if (did) e.preventDefault();
+        return;
+      }
+
+      // ── Help dialog open: only `?` toggles it back closed ───────────────
+      if (helpOpenRef.current) {
         if (isQuestionMarkHelp(e)) {
           e.preventDefault();
           setHelpOpen(false);
-          return;
         }
         return;
       }
 
+      // ── `?` toggles help ────────────────────────────────────────────────
       if (isQuestionMarkHelp(e)) {
         if (typing) return;
         e.preventDefault();
@@ -77,43 +112,85 @@ export function AdminKeyboardShortcuts() {
         return;
       }
 
+      // ── `/` focuses applicant search (if present on this page) ──────────
       if (isPlainSlash(e)) {
         if (typing) return;
         e.preventDefault();
-        document.getElementById(SEARCH_INPUT_ID)?.focus();
+        const el = document.getElementById(SEARCH_INPUT_ID);
+        if (el instanceof HTMLInputElement) {
+          el.focus();
+          el.select();
+        }
         return;
       }
 
+      // After this point we never act while typing.
       if (typing) return;
 
       const now = Date.now();
       const withinG = now - gChordAtRef.current < G_CHORD_MS;
 
+      // ── `g` start of a navigation chord ─────────────────────────────────
       if (e.code === "KeyG" && !e.repeat) {
         gChordAtRef.current = now;
         return;
       }
 
-      if (withinG && e.code === "KeyD") {
-        e.preventDefault();
+      // ── `g <key>` completions ───────────────────────────────────────────
+      if (withinG) {
+        // Reset chord state immediately on any second keypress; we either
+        // route or fall through, but we never want to leave the chord armed.
         gChordAtRef.current = 0;
-        routerRef.current.push("/admin");
-        return;
-      }
 
-      if (withinG && e.code === "KeyL") {
-        e.preventDefault();
-        gChordAtRef.current = 0;
-        const m = pathnameRef.current.match(/^\/admin\/jobs\/([^/]+)/);
-        if (m) {
-          routerRef.current.push(`/admin/jobs/${m[1]}/applicants`);
+        // Navigation: extract jobId if we're inside a job workspace.
+        const jobMatch = pathnameRef.current.match(/^\/admin\/jobs\/([^/]+)/);
+        const jobId = jobMatch?.[1];
+
+        switch (e.code) {
+          case "KeyD": // dashboard
+            e.preventDefault();
+            routerRef.current.push("/admin");
+            return;
+          case "KeyL": // applicant list
+            if (jobId) {
+              e.preventDefault();
+              routerRef.current.push(`/admin/jobs/${jobId}/applicants`);
+            }
+            return;
+          case "KeyP": // pipeline
+            if (jobId) {
+              e.preventDefault();
+              routerRef.current.push(`/admin/jobs/${jobId}/pipeline`);
+            }
+            return;
+          case "KeyO": // overview
+            if (jobId) {
+              e.preventDefault();
+              routerRef.current.push(`/admin/jobs/${jobId}`);
+            }
+            return;
+          case "KeyS": // settings
+            if (jobId) {
+              e.preventDefault();
+              routerRef.current.push(`/admin/jobs/${jobId}/settings`);
+            }
+            return;
+          case "KeyI": // integrations
+            if (jobId) {
+              e.preventDefault();
+              routerRef.current.push(`/admin/jobs/${jobId}/integrations`);
+            }
+            return;
+          case "KeyT": // templates
+            e.preventDefault();
+            routerRef.current.push("/admin/templates");
+            return;
+          default:
+            // Unknown completion — the chord is already cleared above so
+            // nothing's stuck. Let the keypress fall through (it does
+            // nothing else since we're not in a typing context).
+            return;
         }
-        return;
-      }
-
-      // Any non-d/l key cancels the pending G chord (avoid stuck state).
-      if (withinG && e.key.length === 1) {
-        gChordAtRef.current = 0;
       }
     }
 
@@ -131,12 +208,12 @@ export function AdminKeyboardShortcuts() {
       onClick={() => setHelpOpen(false)}
     >
       <div
-        className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 text-sm shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+        className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl border border-zinc-200 bg-white p-5 text-sm shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
         data-keyboard-shortcuts-ignore
         onClick={(ev) => ev.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="font-semibold text-zinc-900 dark:text-zinc-100">Shortcuts</h2>
+          <h2 className="font-semibold text-zinc-900 dark:text-zinc-100">Keyboard shortcuts</h2>
           <button
             type="button"
             onClick={() => setHelpOpen(false)}
@@ -146,50 +223,62 @@ export function AdminKeyboardShortcuts() {
             <X className="h-4 w-4" />
           </button>
         </div>
+
         <ul className="space-y-2.5 text-zinc-600 dark:text-zinc-400">
-          <li>
-            <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-800">
-              ?
-            </kbd>{" "}
-            Toggle this help
-          </li>
-          <li>
-            <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-800">
-              /
-            </kbd>{" "}
-            Focus applicant search (when the list is visible)
-          </li>
-          <li>
-            <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-800">
-              g
-            </kbd>{" "}
-            then{" "}
-            <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-800">
-              d
-            </kbd>{" "}
-            — Jobs dashboard
-          </li>
-          <li>
-            <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-800">
-              g
-            </kbd>{" "}
-            then{" "}
-            <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-800">
-              l
-            </kbd>{" "}
-            — Applicant list (inside a job)
-          </li>
-          <li>
-            <kbd className="rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-800">
-              Esc
-            </kbd>{" "}
-            Close help
-          </li>
+          <ShortcutRow keys={["?"]} desc="Toggle this help" />
+          <ShortcutRow keys={["/"]} desc="Focus applicant search (when list is visible)" />
+          <ShortcutRow keys={["Esc"]} desc="Close help / blur input / cancel chord" />
         </ul>
+
+        <p className="mt-4 mb-2 text-xs font-medium uppercase tracking-wider text-zinc-400">
+          Navigation (press <kbd className={kbdCls}>g</kbd> then…)
+        </p>
+        <ul className="space-y-2.5 text-zinc-600 dark:text-zinc-400">
+          <ShortcutRow chord="g" keys={["d"]} desc="Jobs dashboard" />
+          <ShortcutRow chord="g" keys={["t"]} desc="Templates" />
+          <ShortcutRow chord="g" keys={["o"]} desc="Job overview (inside a job)" />
+          <ShortcutRow chord="g" keys={["l"]} desc="Applicant list (inside a job)" />
+          <ShortcutRow chord="g" keys={["p"]} desc="Pipeline / Kanban (inside a job)" />
+          <ShortcutRow chord="g" keys={["s"]} desc="Job settings (inside a job)" />
+          <ShortcutRow chord="g" keys={["i"]} desc="Integrations (inside a job)" />
+        </ul>
+
         <p className="mt-4 text-xs text-zinc-400">Click outside or press ? again to close.</p>
       </div>
     </div>
   ) : null;
+}
+
+const kbdCls =
+  "rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-800";
+
+function ShortcutRow({
+  keys,
+  desc,
+  chord,
+}: {
+  keys: string[];
+  desc: string;
+  chord?: string;
+}) {
+  return (
+    <li className="flex items-baseline gap-2">
+      <span className="inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap">
+        {chord && (
+          <>
+            <kbd className={kbdCls}>{chord}</kbd>
+            <span className="text-zinc-400">then</span>
+          </>
+        )}
+        {keys.map((k, i) => (
+          <kbd key={i} className={kbdCls}>
+            {k}
+          </kbd>
+        ))}
+      </span>
+      <span>{desc}</span>
+    </li>
+  );
 }
 
 export { SEARCH_INPUT_ID };

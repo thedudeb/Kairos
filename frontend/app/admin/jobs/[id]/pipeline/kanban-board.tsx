@@ -7,7 +7,8 @@ import {
   DragOverEvent,
   DragOverlay,
   DragStartEvent,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   pointerWithin,
@@ -114,8 +115,25 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage, read
     setTimeout(() => setError((cur) => (cur === msg ? null : cur)), 5000);
   }
 
+  // Separate Mouse and Touch sensors so we can give each one the right
+  // activation behavior:
+  //   - Mouse: 6px distance threshold. Quick to start dragging but ignores
+  //     small clicks/clicks-with-tiny-tremor.
+  //   - Touch: 200ms long-press delay. On mobile, a quick swipe should still
+  //     scroll the page; only an intentional press-and-hold starts a drag.
+  //     Without this, every accidental touch on a card would interrupt a
+  //     vertical scroll.
+  // In readOnly mode (reviewer role) we set absurd thresholds so neither
+  // sensor can ever fire — drag is disabled by construction.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: readOnly ? 10_000 : 6 } }),
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: readOnly ? 10_000 : 6 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: readOnly
+        ? { delay: 10_000_000, tolerance: 0 }
+        : { delay: 200, tolerance: 8 },
+    }),
   );
 
   function findApplicant(id: string): ApplicantListItem | null {
@@ -429,11 +447,17 @@ function KanbanColumn({
     >
       {/* Column header */}
       <div className="group mb-3 flex items-center gap-1.5">
-        {/* Drag handle — triggers column reorder */}
+        {/* Drag handle — triggers column reorder.
+            style={{ touchAction: "none" }} is critical for touch drag: without
+            it, the browser claims the touch as a vertical-scroll gesture before
+            dnd-kit's TouchSensor can register the long-press. With it, a press
+            on the handle is unambiguously "this is a drag," not "this is a
+            scroll" — and the rest of the page still scrolls normally. */}
         <button
           type="button"
           {...attributes}
           {...(readOnly ? {} : listeners)}
+          style={readOnly ? undefined : { touchAction: "none" }}
           className={cn(
             "text-zinc-300 hover:text-zinc-500 dark:text-zinc-600 dark:hover:text-zinc-400",
             readOnly ? "cursor-default opacity-40" : "cursor-grab active:cursor-grabbing",
@@ -597,11 +621,12 @@ function ApplicantCard({
         {!readOnly ? (
         <button
           {...listeners}
+          style={{ touchAction: "none" }}
           className={cn(
             "mt-0.5 shrink-0 cursor-grab text-zinc-300 hover:text-zinc-500 active:cursor-grabbing dark:text-zinc-600 dark:hover:text-zinc-400",
             isOverlay && "cursor-grabbing",
           )}
-          title="Drag to move"
+          title="Drag to move (long-press on touch)"
           tabIndex={-1}
         >
           <GripHorizontal className="h-3.5 w-3.5" />
