@@ -30,6 +30,10 @@ interface ApplicantTableProps {
   jobId: string;
   applicants: ApplicantListItem[];
   stages: PipelineStage[];
+  /** Per-stage applicant counts that respect every filter EXCEPT stage_id.
+   *  Computed server-side so the pills can show real numbers regardless
+   *  of the currently-selected stage. */
+  stageCounts: Record<string, number>;
   availableSkills: string[];
   activeStageId: string | null;
   searchQuery: string;
@@ -49,6 +53,7 @@ export function ApplicantTable({
   jobId,
   applicants,
   stages,
+  stageCounts,
   availableSkills,
   activeStageId,
   searchQuery,
@@ -238,21 +243,33 @@ export function ApplicantTable({
         </div>
       </div>
 
-      {/* Stage filter pills */}
+      {/* Stage filter pills.
+          Counts come from the server-side stageCounts map (which respects
+          every filter EXCEPT stage_id) rather than from the already-filtered
+          applicants array on this page. Without this, every non-selected
+          pill shows (0) the moment you click any single stage. */}
       <div className="mb-3 flex flex-wrap gap-2">
-        <button
-          onClick={() => applyFilter("stage_id", null)}
-          className={cn(
-            "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-            !activeStageId
-              ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-              : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300",
-          )}
-        >
-          All ({applicants.length})
-        </button>
+        {(() => {
+          const totalAcrossStages = Object.values(stageCounts).reduce(
+            (sum, n) => sum + n,
+            0,
+          );
+          return (
+            <button
+              onClick={() => applyFilter("stage_id", null)}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                !activeStageId
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300",
+              )}
+            >
+              All ({totalAcrossStages})
+            </button>
+          );
+        })()}
         {stages.map((stage) => {
-          const count = applicants.filter((a) => a.current_stage_id === stage.id).length;
+          const count = stageCounts[stage.id] ?? 0;
           return (
             <button
               key={stage.id}

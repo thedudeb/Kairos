@@ -269,6 +269,102 @@ def list_skills(
     return out
 
 
+# ─── Per-stage counts ─────────────────────────────────────────────────────────
+
+
+@router.get("/stage-counts", response_model=list[dict])
+def stage_counts(
+    job_id: UUID,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_staff),
+    # Accept every filter the list endpoint accepts EXCEPT stage_id — the
+    # whole point is that pill counts should reflect "what would I see if I
+    # clicked this stage" regardless of which stage is currently selected.
+    parse_status: ParseStatus | None = Query(default=None),
+    institution: str | None = Query(default=None, max_length=300),
+    degree: str | None = Query(default=None, max_length=300),
+    skills: list[str] | None = Query(default=None),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=200),
+) -> list[dict]:
+    """Per-stage applicant counts that respect every filter EXCEPT stage_id.
+
+    Used by the stage filter pills on the applicant list view. Previously
+    the pills computed counts from the already-stage-filtered array on the
+    client, so every stage except the selected one showed (0) even when
+    there were applicants there — rubric #17 ("Filters lose number per
+    each pipeline when clicked on another filter").
+
+    Returns: [{ "stage_id": "<uuid>", "count": <int> }, ...]
+    Stages with zero matching applicants are included so the UI can
+    confidently show (0) when that's actually true.
+    """
+    _get_job_or_404(session, job_id)
+
+    q = (
+        select(Applicant.current_stage_id, func.count(Applicant.id))
+        .outerjoin(ParsedResume, ParsedResume.applicant_id == Applicant.id)
+        .where(Applicant.job_id == job_id)
+    )
+
+    if parse_status:
+        q = q.where(Applicant.parse_status == parse_status)
+    if institution:
+        q = q.where(func.lower(ParsedResume.top_institution).like(f"%{institution.lower()}%"))
+    if degree:
+        q = q.where(func.lower(ParsedResume.top_degree).like(f"%{degree.lower()}%"))
+    if date_from:
+        try:
+            dt_from = datetime.fromisoformat(date_from)
+            q = q.where(Applicant.submitted_at >= dt_from)
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            dt_to = datetime.fromisoformat(date_to)
+            q = q.where(Applicant.submitted_at <= dt_to)
+        except ValueError:
+            pass
+    if skills:
+        skill_subq = (
+            select(ApplicantSkill.applicant_id)
+            .where(
+                ApplicantSkill.applicant_id == Applicant.id,
+                func.lower(ApplicantSkill.skill).in_([s.lower() for s in skills]),
+            )
+        )
+        q = q.where(Applicant.id.in_(skill_subq))
+    if search:
+        like = f"%{search.lower()}%"
+        q = q.where(
+            or_(
+                func.lower(Applicant.first_name).like(like),
+                func.lower(Applicant.last_name).like(like),
+                func.lower(Applicant.email).like(like),
+                func.lower(ParsedResume.top_institution).like(like),
+                func.lower(ParsedResume.top_degree).like(like),
+            )
+        )
+
+    q = q.group_by(Applicant.current_stage_id)
+    rows = session.execute(q).all()
+
+    # Seed every stage on this job with 0 so the pills can confidently show
+    # zero counts for stages that genuinely have no matching applicants.
+    counts: dict[str, int] = {
+        str(s.id): 0
+        for s in session.exec(
+            select(PipelineStage).where(PipelineStage.job_id == job_id)
+        ).all()
+    }
+    for stage_id_val, n in rows:
+        if stage_id_val is not None:
+            counts[str(stage_id_val)] = n
+
+    return [{"stage_id": sid, "count": n} for sid, n in counts.items()]
+
+
 # ─── List applicants ──────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[ApplicantListItem])
