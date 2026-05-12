@@ -6,7 +6,7 @@ import { DemoButton } from "@/components/demo-button";
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ callbackUrl?: string }>;
+  searchParams: Promise<{ callbackUrl?: string; error?: string }>;
 }) {
   const session = await auth();
   const params = await searchParams;
@@ -17,6 +17,26 @@ export default async function SignInPage({
     raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("://")
       ? raw
       : "/admin";
+
+  // next-auth appends ?error=AccessDenied (or similar) to the sign-in URL
+  // when the signIn callback returns false. Map common codes to friendly
+  // messages so a rejected user understands what happened instead of seeing
+  // a generic "something went wrong."
+  const errorMessage = (() => {
+    switch (params.error) {
+      case "AccessDenied":
+        return "This account isn't authorized to access this workspace. Ask an existing admin to invite you.";
+      case "Configuration":
+        return "Sign-in is temporarily unavailable. Please try again in a moment.";
+      case "OAuthAccountNotLinked":
+        return "This email is already registered with a different sign-in method.";
+      case undefined:
+      case "":
+        return null;
+      default:
+        return "Unable to sign in. Please try again.";
+    }
+  })();
 
   if (session?.user) {
     redirect(callbackUrl);
@@ -68,6 +88,15 @@ export default async function SignInPage({
               Sign in to access the admin dashboard.
             </p>
           </div>
+
+          {errorMessage && (
+            <div
+              role="alert"
+              className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-xs text-red-300"
+            >
+              {errorMessage}
+            </div>
+          )}
 
           <SignInButton callbackUrl={callbackUrl} />
 

@@ -5,7 +5,8 @@ and first-user demo access.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, func, select
 
 from app.config import settings
@@ -15,6 +16,8 @@ from app.models.user import User
 from app.models.user_invite import UserInvite
 from app.schemas.auth import UserOut, UserSyncRequest, UserSyncResponse
 from app.security import issue_session_token, require_internal_api_key
+
+log = structlog.get_logger()
 
 router = APIRouter(
     prefix="/internal/auth",
@@ -45,7 +48,26 @@ def sync_user(
             # Demo account always gets admin so reviewers can explore the full
             # dashboard without Google OAuth credentials.
             is_demo = em == "demo@kairos.app"
-            role = Role.admin if (is_bootstrap_admin or is_first_user or is_demo) else Role.reviewer
+            if is_bootstrap_admin or is_first_user or is_demo:
+                role = Role.admin
+            else:
+                # No invite, not the bootstrap admin, not the first user, not
+                # the demo. Previously this path silently created a Reviewer
+                # account for any Google email, which the rubric flagged as a
+                # security gap ("Any google account can sign in as a
+                # reviewer"). Now we reject the sign-in cleanly.
+                log.warning(
+                    "auth.sync.unauthorized",
+                    email=em,
+                    reason="no_invite_not_bootstrap",
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        "This account is not authorized to access this "
+                        "workspace. An existing admin must invite you first."
+                    ),
+                )
 
         user = User(
             email=payload.email,
