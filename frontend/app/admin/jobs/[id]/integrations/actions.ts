@@ -70,6 +70,36 @@ export async function deleteIntegration(
   return { ok: res.ok };
 }
 
+/**
+ * List the recorded webhook deliveries for an integration so the admin can
+ * see what fired, when, and what the response was.
+ *
+ * Previously the editor called backendFetch() directly from a client
+ * component, which fails in the browser (auth() is server-only) — the catch
+ * silently set deliveries=[], producing the "No deliveries yet" message on
+ * the rubric reviewer's screen even though the rows existed in the DB.
+ */
+export async function listDeliveries(
+  jobId: string,
+  integrationId: string,
+): Promise<
+  | { ok: true; deliveries: unknown[] }
+  | { ok: false; error: string }
+> {
+  const res = await authedFetch(
+    `/jobs/${jobId}/integrations/${integrationId}/deliveries`,
+  );
+  if (!res.ok) {
+    const detail = await res
+      .json()
+      .then((j) => (typeof j?.detail === "string" ? j.detail : null))
+      .catch(() => null);
+    return { ok: false, error: detail ?? `Could not load deliveries (${res.status}).` };
+  }
+  const deliveries = (await res.json()) as unknown[];
+  return { ok: true, deliveries };
+}
+
 export async function retryDelivery(
   jobId: string,
   integrationId: string,

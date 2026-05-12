@@ -8,10 +8,10 @@ import {
   createIntegration,
   updateIntegration,
   deleteIntegration,
+  listDeliveries,
   retryDelivery,
   testIntegration,
 } from "./actions";
-import { backendFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface IntegrationOut {
@@ -237,22 +237,26 @@ function IntegrationRow({
   const [isPending, startTransition] = useTransition();
   const [deliveries, setDeliveries] = useState<DeliveryOut[] | null>(null);
   const [loadingLog, setLoadingLog] = useState(false);
+  const [logError, setLogError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ ok: boolean; status?: number; body?: string; error?: string } | null>(null);
   const [testingPending, startTestTransition] = useTransition();
   const router = useRouter();
 
   async function loadDeliveries() {
     setLoadingLog(true);
-    try {
-      const data = await backendFetch<DeliveryOut[]>(
-        `/jobs/${jobId}/integrations/${integration.id}/deliveries`,
-      );
-      setDeliveries(data);
-    } catch {
+    setLogError(null);
+    // Use the server action so the auth header is attached on the server side.
+    // Calling backendFetch() directly from a client component silently fails
+    // (auth() is server-only) — that's what made the deliveries panel always
+    // say "No deliveries yet" even after a webhook had fired.
+    const result = await listDeliveries(jobId, integration.id);
+    if (result.ok) {
+      setDeliveries(result.deliveries as DeliveryOut[]);
+    } else {
       setDeliveries([]);
-    } finally {
-      setLoadingLog(false);
+      setLogError(result.error);
     }
+    setLoadingLog(false);
   }
 
   function toggleExpand() {
@@ -416,6 +420,11 @@ function IntegrationRow({
           </p>
           {loadingLog ? (
             <RefreshCw className="h-4 w-4 animate-spin text-zinc-400" />
+          ) : logError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-400">
+              <span className="font-medium">Could not load deliveries.</span>{" "}
+              <span className="opacity-75">{logError}</span>
+            </div>
           ) : deliveries && deliveries.length === 0 ? (
             <p className="text-xs text-zinc-400">No deliveries yet.</p>
           ) : (
