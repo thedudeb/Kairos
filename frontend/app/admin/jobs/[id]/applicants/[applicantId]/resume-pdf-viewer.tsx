@@ -33,6 +33,13 @@ export function ResumePdfViewer({ jobId, applicantId }: ResumePdfViewerProps) {
     [jobId, applicantId],
   );
 
+  // PDF Open Parameters (Adobe spec, honoured by Chrome / Edge / Firefox's
+  // built-in viewers). `navpanes=0` hides the left thumbnail sidebar so we
+  // get more horizontal space for the actual resume — most resumes are 1-2
+  // pages and the sidebar is just empty real estate. The fragment is purely
+  // a client-side hint to the PDF viewer; it never reaches the server.
+  const iframeUrl = `${fileUrl}#navpanes=0`;
+
   const [state, setState] = useState<"loading" | "loaded" | "error">("loading");
 
   if (state === "error") {
@@ -52,7 +59,7 @@ export function ResumePdfViewer({ jobId, applicantId }: ResumePdfViewerProps) {
         </div>
       )}
       <iframe
-        src={fileUrl}
+        src={iframeUrl}
         title="Applicant resume"
         className="h-full w-full"
         onLoad={() => setState("loaded")}
