@@ -13,6 +13,20 @@
   summary {
     cursor: pointer;
   }
+
+  /* Native form control affordances rendered by the browser (not our markup):
+     calendar picker icon on <input type="date">, time/datetime icons, the
+     file-upload trigger, and the search-clear "x". The global rule above
+     can't reach these because they're browser pseudo-elements. */
+  ::-webkit-calendar-picker-indicator,
+  ::-webkit-clear-button,
+  ::-webkit-inner-spin-button,
+  ::-webkit-search-cancel-button,
+  ::-webkit-file-upload-button,
+  ::-webkit-color-swatch-wrapper,
+  ::file-selector-button {
+    cursor: pointer;
+  }
 }
 
 /* ── Cosmic Night: light-mode zinc remapping ───────────────────────────── */
