@@ -14,7 +14,7 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import EmailStr
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -28,6 +28,7 @@ from app.models.applicant import Applicant, ApplicantCustomFieldValue
 from app.models.job import Job, JobFormField
 from app.models.pipeline import PipelineStage
 from app.schemas.public import ApplicantSubmissionResponse, PublicFormField, PublicJobListItem, PublicJobResponse
+from app.security import decode_resume_share_token
 from app.services import email as email_svc
 from app.services import storage as storage_svc
 from app.services.storage import _LOCAL_DIR as _UPLOAD_DIR
@@ -446,3 +447,57 @@ def serve_local_file(filename: str) -> FileResponse:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "forbidden")
 
     return FileResponse(str(local_path))
+
+
+# ─── Token-signed resume sharing for outbound webhooks ────────────────────────
+#
+# Used by external webhook receivers (assessment platforms, background-check
+# services, etc.) to fetch a candidate's resume after they receive a
+# stage-transition webhook from us. The link is signed (HS256 against
+# AUTH_SECRET, 1-hour expiry) and applicant-scoped — possession of the token
+# grants read-only access to ONE applicant's resume and nothing else.
+#
+# This replaces the previous behavior where we embedded the authenticated
+# proxy URL `/api/jobs/{job}/applicants/{applicant}/resume` in webhook
+# payloads — that URL requires an admin session cookie, so third-party
+# receivers always got a 401 (rubric #25 "resume url is not accessible").
+
+
+@router.get("/resume/{token}")
+@limiter.limit("60/minute")
+def fetch_shared_resume(token: str, request: Request, session: Session = Depends(get_session)) -> Response:
+    """Serve an applicant's resume PDF using a short-lived JWT.
+
+    Returns 401 if the token is invalid or expired, 404 if the applicant
+    or underlying file is missing. The token verification happens before
+    any DB or storage work so a malformed token is the cheapest failure.
+    """
+    applicant_id = decode_resume_share_token(token)
+
+    applicant = session.get(Applicant, applicant_id)
+    if applicant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "applicant not found")
+    if not applicant.resume_gcs_path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no resume on file")
+
+    try:
+        data = storage_svc.read_file_bytes(applicant.resume_gcs_path)
+    except FileNotFoundError:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "resume file missing from storage"
+        ) from None
+    except Exception:
+        log.exception("public.resume_share.read_failed", applicant_id=str(applicant_id))
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, "could not read resume from storage"
+        ) from None
+
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'inline; filename="resume.pdf"',
+            # No long cache — the URL is single-purpose and short-lived anyway.
+            "Cache-Control": "private, max-age=60",
+        },
+    )

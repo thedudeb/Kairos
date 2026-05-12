@@ -38,7 +38,8 @@ from app.models.integration import JobIntegration, WebhookDelivery
 from app.models.job import Job, JobAssessmentQuestion
 from app.models.pipeline import PipelineStage, StageTransition
 from app.models.template import Template
-from app.services import storage as storage_svc
+from app.security import issue_resume_share_token
+from app.services import storage as storage_svc  # noqa: F401 — kept for sibling helpers
 
 log = structlog.get_logger()
 
@@ -110,6 +111,24 @@ def _build_payload(
         f"{applicant.first_name} {applicant.last_name}".strip() if applicant else None
     )
 
+    # Build an externally-reachable resume URL using a short-lived token
+    # against our own public endpoint. Previously this used
+    # storage_svc.get_download_url() which either:
+    #   - Pointed at the authenticated proxy (third parties can't fetch it)
+    #   - Returned a GCS signed URL (requires the service account to have
+    #     iam.serviceAccountTokenCreator, otherwise silently fell back to
+    #     a `gs://` URL that no external receiver can fetch).
+    # The token-signed public endpoint sidesteps both problems and works
+    # identically whether the resume is in local:// or gs:// storage.
+    # Rubric #25 ("resume url is not accessible") fixed here.
+    if applicant and applicant.resume_gcs_path:
+        token = issue_resume_share_token(applicant_id=applicant.id, ttl_minutes=60)
+        resume_url: str | None = (
+            f"{settings.public_api_url.rstrip('/')}/public/resume/{token}"
+        )
+    else:
+        resume_url = None
+
     payload: dict[str, Any] = {
         "event": "stage_transition",
         "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -118,9 +137,7 @@ def _build_payload(
             "name": full_name,
             "email": applicant.email if applicant else None,
             "phone": applicant.phone if applicant else None,
-            "resumeUrl": storage_svc.get_download_url(applicant.resume_gcs_path)
-            if applicant
-            else None,
+            "resumeUrl": resume_url,
         },
         "stage": {
             "id": str(to_stage.id) if to_stage else None,

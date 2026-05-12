@@ -37,6 +37,53 @@ def issue_session_token(*, user_id: UUID, email: str, role: str, ttl_minutes: in
     return jwt.encode(payload, settings.auth_secret, algorithm=ALGO)
 
 
+def issue_resume_share_token(*, applicant_id: UUID, ttl_minutes: int = 60) -> str:
+    """Issue a short-lived JWT that grants read-only access to a specific
+    applicant's resume via the public /public/resume/{token} endpoint.
+
+    Used to embed externally-reachable resume URLs in outbound webhook
+    payloads (rubric #25). Third-party receivers don't have our admin
+    session, so the link can't point at the authenticated proxy. The token
+    is signed with the same AUTH_SECRET as session tokens but carries a
+    distinct `type` claim so a leaked session token can't be reused here
+    and vice versa.
+    """
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(applicant_id),
+        "type": "resume_share",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=ttl_minutes)).timestamp()),
+    }
+    return jwt.encode(payload, settings.auth_secret, algorithm=ALGO)
+
+
+def decode_resume_share_token(token: str) -> UUID:
+    """Verify a resume-share token and return the applicant UUID it grants
+    access to. Raises 401 on any failure (invalid signature, expired, wrong
+    type, malformed sub claim) without leaking which one to the caller."""
+    try:
+        claims = jwt.decode(token, settings.auth_secret, algorithms=[ALGO])
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid or expired resume token",
+        ) from exc
+
+    if claims.get("type") != "resume_share":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid token type",
+        )
+    try:
+        return UUID(claims["sub"])
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid token subject",
+        ) from exc
+
+
 def decode_session_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, settings.auth_secret, algorithms=[ALGO])

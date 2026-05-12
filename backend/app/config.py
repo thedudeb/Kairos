@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     initial_admin_email: str = Field(...)
     frontend_origin: str = Field("http://localhost:3000")
 
+    # The externally-reachable base URL of THIS backend service. Used to build
+    # public resume-share links embedded in outbound webhook payloads, since
+    # those links have to be fetchable by third-party receivers that don't
+    # have our admin session. In production this is the Cloud Run URL of the
+    # recruitment-api service. In dev it's localhost:8000.
+    public_api_url: str = Field("http://localhost:8000")
+
     # --- Encryption (separate from auth_secret to allow independent rotation) ---
     # If not set, falls back to auth_secret for backward compatibility.
     encryption_secret: str | None = None
