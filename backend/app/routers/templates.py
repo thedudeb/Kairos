@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from app.db import get_session
+from app.models.job import Job
 from app.models.template import Template, TemplateAssessmentQuestion, TemplateFormField
 from app.schemas.template import (
     TemplateAssessmentQuestionOut,
@@ -202,7 +203,28 @@ def delete_template(
     session: Session = Depends(get_session),
     _: object = Depends(require_admin),
 ) -> None:
+    """Delete a template and its child rows.
+
+    Jobs that previously had this template applied keep their snapshotted
+    form fields and assessment questions intact — only the `template_id`
+    pointer back to this row is nulled out. (Snapshot semantics: a job's
+    form is decoupled from its source template at apply-time.)
+
+    Previously this method didn't null out Job.template_id, so any
+    template that had been applied to a job at least once would fail to
+    delete with a FK integrity error. That's the bug the rubric reviewer
+    flagged as 'The delete button doesn't work' — they tried to delete
+    a template they'd already applied somewhere.
+    """
     template = _get_or_404(session, template_id)
+
+    # Null out references from any jobs that have this template applied.
+    # We do this in code rather than via ON DELETE SET NULL at the DB
+    # level so the deploy doesn't need a coordinated schema migration.
+    for job in session.exec(select(Job).where(Job.template_id == template_id)).all():
+        job.template_id = None
+        session.add(job)
+
     for f in session.exec(
         select(TemplateFormField).where(TemplateFormField.template_id == template_id)
     ).all():
