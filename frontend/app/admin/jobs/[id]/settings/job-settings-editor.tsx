@@ -80,6 +80,14 @@ export function JobSettingsEditor({
   }
 
   function saveFields() {
+    // Reject empty labels — they render as blank input boxes on the public
+    // application form. Surface the issue inline rather than silently
+    // saving garbage.
+    const badIdx = fields.findIndex((f) => !f.label.trim());
+    if (badIdx !== -1) {
+      notify(false, `Custom field #${badIdx + 1} needs a label.`);
+      return;
+    }
     startTransition(async () => {
       const payload = fields.map((f, i) => ({ ...f, sort_order: i }));
       const res = await updateJobFormFields(job.id, payload);
@@ -88,6 +96,12 @@ export function JobSettingsEditor({
   }
 
   function saveQuestions() {
+    // Reject empty question text for the same reason.
+    const badIdx = questions.findIndex((q) => !q.question_text.trim());
+    if (badIdx !== -1) {
+      notify(false, `Assessment question #${badIdx + 1} needs question text.`);
+      return;
+    }
     startTransition(async () => {
       const payload = questions.map((q, i) => ({ ...q, sort_order: i }));
       const res = await updateJobAssessmentQuestions(job.id, payload);

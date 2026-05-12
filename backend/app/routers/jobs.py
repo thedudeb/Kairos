@@ -124,7 +124,27 @@ def _fetch_full(session: Session, job: Job) -> JobOut:
     )
 
 
+def _validate_field_payloads(field_payloads, question_payloads) -> None:
+    """Reject empty field labels / empty question text. Same guard as the
+    templates router — without it, the public form renders unlabeled input
+    boxes and the admin loses the ability to distinguish ghost entries.
+    """
+    for i, f in enumerate(field_payloads):
+        if not (getattr(f, "label", None) or "").strip():
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"Custom field at position {i + 1} is missing a label.",
+            )
+    for i, q in enumerate(question_payloads):
+        if not (getattr(q, "question_text", None) or "").strip():
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"Assessment question at position {i + 1} is missing question text.",
+            )
+
+
 def _replace_job_fields(session: Session, job_id: UUID, field_payloads, question_payloads) -> None:
+    _validate_field_payloads(field_payloads, question_payloads)
     for f in session.exec(select(JobFormField).where(JobFormField.job_id == job_id)).all():
         session.delete(f)
     for q in session.exec(

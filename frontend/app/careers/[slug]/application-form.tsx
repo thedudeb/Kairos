@@ -218,18 +218,22 @@ export function ApplicationForm({ slug, customFields }: ApplicationFormProps) {
         />
       </Field>
 
-      {/* Custom fields */}
-      {customFields.map((field) => (
-        <Field key={field.id} label={field.label} required={field.is_required}>
-          <CustomFieldInput
-            field={field}
-            disabled={isPending}
-            inputClassName={APPLICATION_INPUT_CLASS}
-            onFileChange={(e) => handleCustomFileChange(field.id, e)}
-            customFilename={customFileNames[field.id] ?? null}
-          />
-        </Field>
-      ))}
+      {/* Custom fields. Skip any rows with empty labels — historic data may
+          have unlabeled fields saved before backend validation existed, and
+          rendering them produces ghost input boxes with no context. */}
+      {customFields
+        .filter((field) => field.label.trim())
+        .map((field) => (
+          <Field key={field.id} label={field.label} required={field.is_required}>
+            <CustomFieldInput
+              field={field}
+              disabled={isPending}
+              inputClassName={APPLICATION_INPUT_CLASS}
+              onFileChange={(e) => handleCustomFileChange(field.id, e)}
+              customFilename={customFileNames[field.id] ?? null}
+            />
+          </Field>
+        ))}
 
       {/* Error banner */}
       {state === "error" && errorMessage && (

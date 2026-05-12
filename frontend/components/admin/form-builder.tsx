@@ -172,14 +172,26 @@ function FieldRow({ field, readOnly, onPatch, onPatchOptions, onPatchFileTypes, 
       <div className="flex flex-wrap gap-3">
         {/* Label */}
         <div className="min-w-[160px] flex-[2]">
-          <label className="mb-1 block text-xs font-medium text-zinc-500">Label</label>
+          <label className="mb-1 block text-xs font-medium text-zinc-500">
+            Label <span className="text-red-500">*</span>
+          </label>
           <input
             disabled={readOnly}
             value={field.label}
             onChange={(e) => onPatch({ label: e.target.value })}
             placeholder="e.g. Cover Letter"
-            className={inputBase}
+            aria-invalid={!field.label.trim() ? true : undefined}
+            className={
+              !field.label.trim()
+                ? inputBase + " !border-red-300 focus:!border-red-400 focus:!ring-red-200 dark:!border-red-900 dark:focus:!border-red-700 dark:focus:!ring-red-900"
+                : inputBase
+            }
           />
+          {!field.label.trim() && !readOnly && (
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+              Required — empty fields won&apos;t save.
+            </p>
+          )}
         </div>
 
         {/* Type */}

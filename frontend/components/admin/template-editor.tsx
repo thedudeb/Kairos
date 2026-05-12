@@ -68,6 +68,21 @@ export function TemplateEditor({
       notify(false, "Template name is required.");
       return;
     }
+    // Reject empty field labels — saving them produces unlabeled boxes on the
+    // public form. Jump to the fields tab so the empty row is visible.
+    const badField = fields.findIndex((f) => !f.label.trim());
+    if (badField !== -1) {
+      setActiveTab("fields");
+      notify(false, `Custom field #${badField + 1} needs a label.`);
+      return;
+    }
+    // Same for assessment questions.
+    const badQuestion = questions.findIndex((q) => !q.question_text.trim());
+    if (badQuestion !== -1) {
+      setActiveTab("questions");
+      notify(false, `Assessment question #${badQuestion + 1} needs question text.`);
+      return;
+    }
     startTransition(async () => {
       const payload = {
         name: name.trim(),

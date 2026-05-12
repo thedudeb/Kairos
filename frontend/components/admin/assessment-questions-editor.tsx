@@ -113,7 +113,7 @@ export function AssessmentQuestionsEditor({
                 <div className="space-y-3">
                   <div>
                     <label className="mb-1 block text-xs font-medium text-zinc-500">
-                      Question text
+                      Question text <span className="text-red-500">*</span>
                     </label>
                     <textarea
                       disabled={readOnly}
@@ -121,8 +121,18 @@ export function AssessmentQuestionsEditor({
                       onChange={(e) => patchQuestion(q.id, { question_text: e.target.value })}
                       rows={2}
                       placeholder="e.g. Tell us about a challenging project you led."
-                      className={inputBase}
+                      aria-invalid={!q.question_text.trim() ? true : undefined}
+                      className={
+                        !q.question_text.trim()
+                          ? inputBase + " !border-red-300 focus:!border-red-400 focus:!ring-red-200 dark:!border-red-900 dark:focus:!border-red-700 dark:focus:!ring-red-900"
+                          : inputBase
+                      }
                     />
+                    {!q.question_text.trim() && !readOnly && (
+                      <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                        Required — empty questions won&apos;t save.
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-3">

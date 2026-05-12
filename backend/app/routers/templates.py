@@ -50,6 +50,30 @@ def _fetch_full(session: Session, template: Template) -> TemplateOut:
     )
 
 
+def _validate_field_payloads(field_payloads, question_payloads) -> None:
+    """Reject payloads where any custom field has an empty label or any
+    assessment question has empty question text.
+
+    Without this guard, the public application form would render an unlabeled
+    input box — visually broken and useless to the applicant — and the admin's
+    field list would have ghost entries that can't be distinguished from each
+    other. Returning 422 here keeps the contract honest: every field must have
+    a label, every question must have text.
+    """
+    for i, f in enumerate(field_payloads):
+        if not (getattr(f, "label", None) or "").strip():
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"Custom field at position {i + 1} is missing a label.",
+            )
+    for i, q in enumerate(question_payloads):
+        if not (getattr(q, "question_text", None) or "").strip():
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"Assessment question at position {i + 1} is missing question text.",
+            )
+
+
 def _replace_fields(
     session: Session,
     template: Template,
@@ -57,6 +81,8 @@ def _replace_fields(
     question_payloads,
 ) -> None:
     """Delete existing child rows and replace with the supplied payloads."""
+    _validate_field_payloads(field_payloads, question_payloads)
+
     for existing in session.exec(
         select(TemplateFormField).where(TemplateFormField.template_id == template.id)
     ).all():
