@@ -65,14 +65,35 @@ interface KanbanBoardProps {
   readOnly?: boolean;
 }
 
-async function apiStages(jobId: string, method: string, path: string, body?: object) {
+/** Result tag so callers can distinguish a successful 204 from a silent
+ *  failure that previously also returned null. */
+type ApiStagesResult =
+  | { ok: true; data: unknown }
+  | { ok: false; error: string };
+
+async function apiStages(
+  jobId: string,
+  method: string,
+  path: string,
+  body?: object,
+): Promise<ApiStagesResult> {
   const res = await fetch(`/api/pipeline/${jobId}/stages${path}`, {
     method,
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (res.status === 204) return null;
-  return res.ok ? res.json() : null;
+  if (res.status === 204) return { ok: true, data: null };
+  if (res.ok) {
+    return { ok: true, data: await res.json() };
+  }
+  // Surface a real error message from the backend ("Cannot delete the last
+  // pipeline stage." / "Cannot delete stage: N applicant(s) are currently
+  // in it." / etc.) instead of dropping it on the floor.
+  const detail = await res
+    .json()
+    .then((j) => (typeof j?.detail === "string" ? j.detail : null))
+    .catch(() => null);
+  return { ok: false, error: detail ?? `Request failed (${res.status})` };
 }
 
 export function KanbanBoard({ jobId, stages: initialStages, initialByStage, readOnly = false }: KanbanBoardProps) {
@@ -83,8 +104,15 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage, read
   const [activeCard, setActiveCard] = useState<ApplicantListItem | null>(null);
   const [activeColumn, setActiveColumn] = useState<Stage | null>(null);
   const [dragOriginStage, setDragOriginStage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const router = useRouter();
+
+  /** Show an error banner; auto-clears after 5s. */
+  function reportError(msg: string) {
+    setError(msg);
+    setTimeout(() => setError((cur) => (cur === msg ? null : cur)), 5000);
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: readOnly ? 10_000 : 6 } }),
@@ -161,13 +189,26 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage, read
       if (!overId.startsWith(COL) || activeId === overId) return;
       const oldIdx = stages.findIndex((s) => `${COL}${s.id}` === activeId);
       const newIdx = stages.findIndex((s) => `${COL}${s.id}` === overId);
+      const prevStages = stages;
       const reordered = arrayMove(stages, oldIdx, newIdx).map((s, i) => ({
         ...s,
         sort_order: i,
       }));
       setStages(reordered);
       startTransition(async () => {
-        await apiStages(jobId, "PUT", "", reordered.map((s) => ({ id: s.id, sort_order: s.sort_order })));
+        const res = await apiStages(
+          jobId,
+          "PUT",
+          "",
+          reordered.map((s) => ({ id: s.id, sort_order: s.sort_order })),
+        );
+        if (!res.ok) {
+          // Revert the optimistic move so the UI matches the server state,
+          // and surface the real reason.
+          setStages(prevStages);
+          reportError(res.error);
+          return;
+        }
         router.refresh();
       });
       return;
@@ -221,6 +262,21 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage, read
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
+      {error && (
+        <div
+          role="alert"
+          className="mx-6 mt-4 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-400"
+        >
+          <span>{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-500 hover:text-red-700 dark:hover:text-red-300"
+            aria-label="Dismiss error"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <SortableContext
         items={stages.map((s) => `${COL}${s.id}`)}
         strategy={horizontalListSortingStrategy}
@@ -234,6 +290,7 @@ export function KanbanBoard({ jobId, stages: initialStages, initialByStage, read
               jobId={jobId}
               onRename={handleRenameStage}
               onDelete={handleDeleteStage}
+              onError={reportError}
               canDelete={stages.length > 1 && (byStage[stage.id]?.length ?? 0) === 0}
               readOnly={readOnly}
             />
@@ -264,6 +321,7 @@ function KanbanColumn({
   jobId,
   onRename,
   onDelete,
+  onError,
   canDelete,
   readOnly = false,
 }: {
@@ -272,6 +330,10 @@ function KanbanColumn({
   jobId: string;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
+  /** Surface a real backend error message to the user — the previous
+   *  code silently swallowed non-2xx responses, which is how rubric #21
+   *  (deleted stages reappear after refresh) actually manifested. */
+  onError: (msg: string) => void;
   canDelete: boolean;
   readOnly?: boolean;
 }) {
@@ -312,15 +374,23 @@ function KanbanColumn({
     const trimmed = editName.trim();
     if (!trimmed || trimmed === stage.name) { cancelEdit(); return; }
     startTransition(async () => {
-      const updated = await fetch(`/api/pipeline/${jobId}/stages/${stage.id}`, {
+      const res = await fetch(`/api/pipeline/${jobId}/stages/${stage.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: trimmed }),
-      }).then((r) => r.ok ? r.json() : null);
-      if (updated) {
-        onRename(stage.id, updated.name);
-        router.refresh();
+      });
+      if (!res.ok) {
+        const detail = await res
+          .json()
+          .then((j) => (typeof j?.detail === "string" ? j.detail : null))
+          .catch(() => null);
+        onError(detail ?? `Could not rename stage (${res.status}).`);
+        // Stay in edit mode so the user can retry — don't silently revert.
+        return;
       }
+      const updated = await res.json();
+      onRename(stage.id, updated.name);
+      router.refresh();
       setIsEditing(false);
     });
   }
@@ -329,7 +399,21 @@ function KanbanColumn({
     if (!canDelete) return;
     if (!confirm(`Delete stage "${stage.name}"? This cannot be undone.`)) return;
     startTransition(async () => {
-      await fetch(`/api/pipeline/${jobId}/stages/${stage.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/pipeline/${jobId}/stages/${stage.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        // Backend rejected (403 reviewer, 409 last-stage or applicants-in-stage,
+        // etc.). Surface the actual reason and DO NOT update local state —
+        // doing so was the bug that caused "deleted stages reappear after
+        // refresh" in the rubric.
+        const detail = await res
+          .json()
+          .then((j) => (typeof j?.detail === "string" ? j.detail : null))
+          .catch(() => null);
+        onError(detail ?? `Could not delete stage (${res.status}).`);
+        return;
+      }
       onDelete(stage.id);
     });
   }
