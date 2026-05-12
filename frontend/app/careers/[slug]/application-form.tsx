@@ -19,7 +19,7 @@ interface ApplicationFormProps {
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
-type FieldErrors = Partial<Record<"phone", string>>;
+type FieldErrors = Partial<Record<"email" | "phone", string>>;
 
 /**
  * Validate a phone number. Permissive enough for international formats
@@ -40,6 +40,29 @@ function validatePhone(raw: string): string | null {
   const digits = trimmed.replace(/\D/g, "");
   if (digits.length < 7) return "Phone number is too short.";
   if (digits.length > 15) return "Phone number is too long.";
+  return null;
+}
+
+/**
+ * Validate an email address. Pragmatic regex — covers the 99% of real
+ * email addresses without trying to perfectly implement RFC 5321
+ * (impossible in regex anyway). Catches the obvious junk like "abc",
+ * "foo@", "@bar.com", "foo bar@baz.com" before we burn a network round
+ * trip on the backend's Pydantic EmailStr validator.
+ *
+ * Browser `type="email"` validation is disabled because the form has
+ * noValidate on it, so this is the only client-side gate.
+ */
+function validateEmail(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return "Email address is required.";
+  // Reject whitespace inside the address.
+  if (/\s/.test(trimmed)) return "Email address can't contain spaces.";
+  // Single @, non-empty local + domain, at least one dot in the domain,
+  // domain TLD of 2+ chars.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(trimmed)) {
+    return "Please enter a valid email address (e.g. you@example.com).";
+  }
   return null;
 }
 
@@ -97,6 +120,13 @@ export function ApplicationForm({ slug, customFields }: ApplicationFormProps) {
     }
   }
 
+  function handleEmailChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (fieldErrors.email) {
+      const err = validateEmail(e.target.value);
+      setFieldErrors((prev) => ({ ...prev, email: err ?? undefined }));
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!formRef.current) return;
@@ -105,13 +135,27 @@ export function ApplicationForm({ slug, customFields }: ApplicationFormProps) {
 
     // Client-side validation before hitting the server.
     const formData = new FormData(formRef.current);
+    const emailRaw = (formData.get("email") as string | null) ?? "";
     const phoneRaw = (formData.get("phone") as string | null) ?? "";
+
+    // Collect ALL field errors at once rather than focusing the first
+    // failing field and short-circuiting — applicants prefer to see
+    // everything that needs fixing in one pass.
+    const nextErrors: FieldErrors = {};
+    const emailError = validateEmail(emailRaw);
+    if (emailError) nextErrors.email = emailError;
     const phoneError = validatePhone(phoneRaw);
-    if (phoneError) {
-      setFieldErrors({ phone: phoneError });
-      // Focus the phone field so the user can correct it immediately.
-      const phoneInput = formRef.current.querySelector<HTMLInputElement>('input[name="phone"]');
-      phoneInput?.focus();
+    if (phoneError) nextErrors.phone = phoneError;
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      // Focus the first failing field so screen-reader users land on the
+      // earliest issue in form order (email comes before phone).
+      const firstFailing = nextErrors.email ? "email" : "phone";
+      const input = formRef.current.querySelector<HTMLInputElement>(
+        `input[name="${firstFailing}"]`,
+      );
+      input?.focus();
       return;
     }
     setFieldErrors({});
@@ -178,13 +222,16 @@ export function ApplicationForm({ slug, customFields }: ApplicationFormProps) {
         </Field>
       </div>
 
-      <Field label="Email address" required>
+      <Field label="Email address" required error={fieldErrors.email}>
         <input
           name="email"
           type="email"
+          inputMode="email"
           required
           autoComplete="email"
           placeholder="jane@example.com"
+          aria-invalid={fieldErrors.email ? true : undefined}
+          onChange={handleEmailChange}
           className={APPLICATION_INPUT_CLASS}
           disabled={isPending}
         />
