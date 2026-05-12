@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 
 from app.db import get_session
 from app.models._base import JobDescriptionKind, JobStatus, RankStatus
-from app.models.applicant import Applicant, ApplicantFitScore
+from app.models.applicant import Applicant, ApplicantCustomFieldValue, ApplicantFitScore
 from app.models.integration import JobIntegration
 from app.models.job import Job, JobAssessmentQuestion, JobFormField
 from app.models.pipeline import PipelineStage
@@ -152,16 +152,62 @@ def _validate_field_payloads(field_payloads, question_payloads) -> None:
             )
 
 
-def _replace_job_fields(session: Session, job_id: UUID, field_payloads, question_payloads) -> None:
-    _validate_field_payloads(field_payloads, question_payloads)
-    for f in session.exec(select(JobFormField).where(JobFormField.job_id == job_id)).all():
+def _delete_existing_form_fields(session: Session, job_id: UUID) -> None:
+    """Delete all JobFormField rows for a job, cascading to the
+    applicant_custom_field_values rows that FK into them.
+
+    The FK on applicant_custom_field_values.job_form_field_id has no
+    ON DELETE CASCADE at the DB level, so a naive `session.delete(field)`
+    raises IntegrityError as soon as a single applicant has submitted a
+    value for a custom field. That was rubric #10's "internal server
+    error" — admins couldn't apply a template to a job, or even resave
+    assessment questions, on any job that had already received applications.
+
+    We cascade in code instead of running a schema migration to add
+    ON DELETE CASCADE — it's a one-line behavior change and doesn't
+    require coordinating a db migration with the deploy.
+    """
+    field_ids = [
+        f.id
+        for f in session.exec(
+            select(JobFormField).where(JobFormField.job_id == job_id)
+        ).all()
+    ]
+    if not field_ids:
+        return
+    # Wipe dependent submitted values first so the FK constraint is happy.
+    for v in session.exec(
+        select(ApplicantCustomFieldValue).where(
+            ApplicantCustomFieldValue.job_form_field_id.in_(field_ids)
+        )
+    ).all():
+        session.delete(v)
+    for f in session.exec(
+        select(JobFormField).where(JobFormField.id.in_(field_ids))
+    ).all():
         session.delete(f)
+    session.flush()
+
+
+def _delete_existing_assessment_questions(session: Session, job_id: UUID) -> None:
+    """Delete all JobAssessmentQuestion rows for a job. Nothing else FKs
+    into this table today, so no cascade is needed — kept symmetric with
+    _delete_existing_form_fields so future code doesn't reach back into
+    the omnibus delete pattern."""
     for q in session.exec(
         select(JobAssessmentQuestion).where(JobAssessmentQuestion.job_id == job_id)
     ).all():
         session.delete(q)
     session.flush()
 
+
+def _replace_form_fields_only(session: Session, job_id: UUID, field_payloads) -> None:
+    """Replace just the form fields. Validates labels + dropdown options.
+    Does NOT touch JobAssessmentQuestion rows — bug #10 was caused by an
+    earlier omnibus helper that re-deleted questions too, even when only
+    fields were being updated."""
+    _validate_field_payloads(field_payloads, [])
+    _delete_existing_form_fields(session, job_id)
     for i, f in enumerate(field_payloads):
         session.add(
             JobFormField(
@@ -170,6 +216,15 @@ def _replace_job_fields(session: Session, job_id: UUID, field_payloads, question
                 **f.model_dump(exclude={"sort_order"}),
             )
         )
+
+
+def _replace_questions_only(session: Session, job_id: UUID, question_payloads) -> None:
+    """Replace just the assessment questions. Validates question text.
+    Does NOT touch JobFormField rows — that was the second half of bug
+    #10: updating questions used to delete and re-insert all form fields,
+    which tripped the same FK violation."""
+    _validate_field_payloads([], question_payloads)
+    _delete_existing_assessment_questions(session, job_id)
     for i, q in enumerate(question_payloads):
         session.add(
             JobAssessmentQuestion(
@@ -178,6 +233,14 @@ def _replace_job_fields(session: Session, job_id: UUID, field_payloads, question
                 **q.model_dump(exclude={"sort_order"}),
             )
         )
+
+
+def _replace_job_fields(session: Session, job_id: UUID, field_payloads, question_payloads) -> None:
+    """Replace both sides at once. Used on job creation (no applicants exist
+    yet) and on full updates via PUT /jobs/{id} where the caller passes both
+    halves of the payload."""
+    _replace_form_fields_only(session, job_id, field_payloads)
+    _replace_questions_only(session, job_id, question_payloads)
 
 
 def _seed_pipeline_stages(session: Session, job_id: UUID) -> None:
@@ -209,13 +272,11 @@ def _snapshot_template(session: Session, job: Job, template_id: UUID) -> None:
         .order_by(TemplateAssessmentQuestion.sort_order)
     ).all()
 
-    for f in session.exec(select(JobFormField).where(JobFormField.job_id == job.id)).all():
-        session.delete(f)
-    for q in session.exec(
-        select(JobAssessmentQuestion).where(JobAssessmentQuestion.job_id == job.id)
-    ).all():
-        session.delete(q)
-    session.flush()
+    # Use the cascading helpers so we don't trip the same FK violation
+    # _replace_job_fields used to. Applying a template to a job that
+    # already has applicants is the rubric's reported failure case for #10.
+    _delete_existing_form_fields(session, job.id)
+    _delete_existing_assessment_questions(session, job.id)
 
     for f in src_fields:
         session.add(
@@ -427,16 +488,15 @@ def update_job(
 
     session.add(job)
 
-    # Merge the two independent field-list updates so we never clobber one when only
-    # the other was provided.
-    new_fields = payload.form_fields
-    new_questions = payload.assessment_questions
-
-    if new_fields is not None or new_questions is not None:
-        # Fetch whichever half wasn't included in the payload so we can preserve it.
-        resolved_fields = new_fields if new_fields is not None else _get_form_fields(session, job_id)
-        resolved_questions = new_questions if new_questions is not None else _get_assessment_questions(session, job_id)
-        _replace_job_fields(session, job_id, resolved_fields, resolved_questions)
+    # Update each side independently so we never touch the half that wasn't
+    # included in the payload. Previously this fetched the other side and
+    # re-inserted it through the omnibus helper, which cascade-deleted the
+    # applicant_custom_field_values rows even when nothing about the form
+    # fields had actually changed.
+    if payload.form_fields is not None:
+        _replace_form_fields_only(session, job_id, payload.form_fields)
+    if payload.assessment_questions is not None:
+        _replace_questions_only(session, job_id, payload.assessment_questions)
 
     session.commit()
     session.refresh(job)
@@ -479,9 +539,11 @@ def replace_form_fields(
     session: Session = Depends(get_session),
     _: object = Depends(require_admin),
 ) -> list[JobFormFieldOut]:
-    """Replace the entire ordered set of custom form fields for a job."""
+    """Replace the entire ordered set of custom form fields for a job.
+    Uses the single-purpose helper so we don't tear down assessment
+    questions just because fields are being saved."""
     _get_or_404(session, job_id)
-    _replace_job_fields(session, job_id, payload, _get_assessment_questions(session, job_id))
+    _replace_form_fields_only(session, job_id, payload)
     session.commit()
     return _get_form_fields(session, job_id)
 
@@ -493,9 +555,12 @@ def replace_assessment_questions(
     session: Session = Depends(get_session),
     _: object = Depends(require_admin),
 ) -> list[JobAssessmentQuestionOut]:
-    """Replace the entire ordered set of assessment questions for a job."""
+    """Replace the entire ordered set of assessment questions for a job.
+    Uses the single-purpose helper so we don't tear down form fields
+    (and their dependent applicant_custom_field_values rows) just because
+    questions are being saved — that was rubric #10's second failure mode."""
     _get_or_404(session, job_id)
-    _replace_job_fields(session, job_id, _get_form_fields(session, job_id), payload)
+    _replace_questions_only(session, job_id, payload)
     session.commit()
     return _get_assessment_questions(session, job_id)
 
