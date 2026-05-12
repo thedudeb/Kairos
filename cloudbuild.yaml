@@ -1,3 +1,12 @@
+# When invoked via a Cloud Build trigger (GitHub push), $COMMIT_SHA is auto-
+# populated and used as the image tag. When invoked manually via
+# `gcloud builds submit --config=cloudbuild.yaml .` there's no git context,
+# so $COMMIT_SHA would be empty and produce an invalid `:` trailing tag.
+# Pass an explicit value with --substitutions=_TAG=<sha-or-name>, or rely
+# on the default ("latest") below.
+substitutions:
+  _TAG: latest
+
 steps:
   # 1. Build the backend image
   - name: "gcr.io/cloud-builders/docker"
@@ -5,7 +14,7 @@ steps:
     args:
       - build
       - -t
-      - us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:$COMMIT_SHA
+      - us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:${_TAG}
       - -t
       - us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:latest
       - ./backend
@@ -30,7 +39,7 @@ steps:
       - update
       - recruitment-api
       - --region=us-central1
-      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:$COMMIT_SHA
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:${_TAG}
 
   # 4. Deploy worker service
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
@@ -43,10 +52,10 @@ steps:
       - update
       - recruitment-worker
       - --region=us-central1
-      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:$COMMIT_SHA
+      - --image=us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:${_TAG}
 
 images:
-  - us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:$COMMIT_SHA
+  - us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:${_TAG}
   - us-central1-docker.pkg.dev/$PROJECT_ID/recruitment/backend:latest
 
 options:
