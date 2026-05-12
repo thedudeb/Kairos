@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { LenisProvider } from "@/components/lenis-provider";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -15,6 +15,24 @@ const geistMono = Geist_Mono({
 });
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+/**
+ * Viewport meta. Without this, mobile browsers render the page at desktop
+ * width (~980px) and zoom out to fit — so the responsive Tailwind classes
+ * (sm: / md: / lg:) never actually trigger on phones. Adding device-width
+ * is the single most important mobile fix; rubric #30 ("not optimised for
+ * mobile") was largely this. themeColor matches our hero background so
+ * iOS Safari paints the status bar in our dark color instead of white.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f5ff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0f" },
+  ],
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),
