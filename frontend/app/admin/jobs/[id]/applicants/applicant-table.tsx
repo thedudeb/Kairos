@@ -315,7 +315,7 @@ export function ApplicantTable({
           </div>
 
           {availableSkills.length > 0 && (
-            <div className="mt-3">
+            <div className="mt-4">
               <label className="mb-1.5 block text-xs font-medium text-zinc-500">Skills</label>
               <div className="flex flex-wrap gap-1.5">
                 {availableSkills.map((skill) => (
@@ -323,10 +323,10 @@ export function ApplicantTable({
                     key={skill}
                     onClick={() => toggleSkill(skill)}
                     className={cn(
-                      "rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors",
+                      "rounded-full px-2.5 py-1 text-xs font-medium transition-all",
                       activeSkills.includes(skill)
-                        ? "bg-blue-600 text-white"
-                        : "bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+                        ? "bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-700/30"
+                        : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700",
                     )}
                   >
                     {skill}
@@ -336,17 +336,17 @@ export function ApplicantTable({
             </div>
           )}
 
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-4 flex items-center justify-between gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-700">
             <button
               onClick={applyAdvancedFilters}
-              className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"
+              className="rounded-lg bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
             >
-              Apply
+              Apply filters
             </button>
             {hasActiveFilters && (
               <button
                 onClick={clearAllFilters}
-                className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-600"
+                className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
               >
                 <X className="h-3 w-3" />
                 Clear all

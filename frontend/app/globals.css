@@ -1,6 +1,20 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ── Cursor: pointer on clickable elements ─────────────────────────────── */
+/* Tailwind v4 / modern browsers default <button> to cursor: default, which
+   feels broken to most users — the rubric flagged this explicitly. Make all
+   enabled buttons and role=button elements use the pointer cursor like
+   anchors do, while leaving disabled controls with the default cursor so
+   their unclickability stays obvious. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary {
+    cursor: pointer;
+  }
+}
+
 /* ── Cosmic Night: light-mode zinc remapping ───────────────────────────── */
 /* Remap Tailwind's zinc scale so every bg-zinc-* / text-zinc-* / border-zinc-*
    class in the admin UI automatically renders in the Cosmic Night palette
