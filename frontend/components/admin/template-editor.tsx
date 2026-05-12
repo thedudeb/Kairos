@@ -76,6 +76,16 @@ export function TemplateEditor({
       notify(false, `Custom field #${badField + 1} needs a label.`);
       return;
     }
+    // Dropdown fields must have at least one option, otherwise the public
+    // form renders an empty <select> the applicant can't actually use.
+    const badDropdown = fields.findIndex(
+      (f) => f.field_type === "dropdown" && (!f.options || f.options.length === 0),
+    );
+    if (badDropdown !== -1) {
+      setActiveTab("fields");
+      notify(false, `Dropdown field #${badDropdown + 1} needs at least one option.`);
+      return;
+    }
     // Same for assessment questions.
     const badQuestion = questions.findIndex((q) => !q.question_text.trim());
     if (badQuestion !== -1) {

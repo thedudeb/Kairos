@@ -66,6 +66,15 @@ def _validate_field_payloads(field_payloads, question_payloads) -> None:
                 status.HTTP_422_UNPROCESSABLE_CONTENT,
                 f"Custom field at position {i + 1} is missing a label.",
             )
+        # Dropdown fields are useless without options — public form would
+        # render an empty <select>.
+        if getattr(f, "field_type", None) == "dropdown":
+            opts = getattr(f, "options", None) or []
+            if not any((o or "").strip() for o in opts):
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    f"Dropdown field at position {i + 1} needs at least one option.",
+                )
     for i, q in enumerate(question_payloads):
         if not (getattr(q, "question_text", None) or "").strip():
             raise HTTPException(

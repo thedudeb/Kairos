@@ -245,15 +245,28 @@ function FieldRow({ field, readOnly, onPatch, onPatchOptions, onPatchFileTypes, 
       {field.field_type === "dropdown" && (
         <div className="mt-3">
           <label className="mb-1 block text-xs font-medium text-zinc-500">
-            Options <span className="font-normal">(comma-separated)</span>
+            Options <span className="text-red-500">*</span>{" "}
+            <span className="font-normal">(comma-separated)</span>
           </label>
           <input
             disabled={readOnly}
             value={field.options?.join(", ") ?? ""}
             onChange={(e) => onPatchOptions(e.target.value)}
             placeholder="Option A, Option B, Option C"
-            className={inputBase}
+            aria-invalid={
+              !field.options || field.options.length === 0 ? true : undefined
+            }
+            className={
+              !field.options || field.options.length === 0
+                ? inputBase + " !border-red-300 focus:!border-red-400 focus:!ring-red-200 dark:!border-red-900 dark:focus:!border-red-700 dark:focus:!ring-red-900"
+                : inputBase
+            }
           />
+          {(!field.options || field.options.length === 0) && !readOnly && (
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+              At least one option is required for dropdown fields.
+            </p>
+          )}
         </div>
       )}
 

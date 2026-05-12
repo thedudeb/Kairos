@@ -88,6 +88,15 @@ export function JobSettingsEditor({
       notify(false, `Custom field #${badIdx + 1} needs a label.`);
       return;
     }
+    // Dropdown fields must have at least one option, otherwise the public
+    // form renders an empty <select>.
+    const badDropdown = fields.findIndex(
+      (f) => f.field_type === "dropdown" && (!f.options || f.options.length === 0),
+    );
+    if (badDropdown !== -1) {
+      notify(false, `Dropdown field #${badDropdown + 1} needs at least one option.`);
+      return;
+    }
     startTransition(async () => {
       const payload = fields.map((f, i) => ({ ...f, sort_order: i }));
       const res = await updateJobFormFields(job.id, payload);
