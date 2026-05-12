@@ -21,7 +21,11 @@ const nextConfig: NextConfig = {
     const securityHeaders: { key: string; value: string }[] = [
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-      { key: "X-Frame-Options", value: "DENY" },
+      // SAMEORIGIN (not DENY) so our own admin pages can embed authenticated
+      // resources via <iframe> — specifically the resume PDF viewer at
+      // /api/jobs/.../resume. Still blocks cross-origin embedding, so the
+      // clickjacking protection that DENY provided is preserved.
+      { key: "X-Frame-Options", value: "SAMEORIGIN" },
     ];
 
     // Only in production — sending HSTS during `next dev` makes browsers cache HTTPS-only for
@@ -42,7 +46,10 @@ const nextConfig: NextConfig = {
         "img-src 'self' data: https:",
         "font-src 'self'",
         "connect-src 'self'",
-        "frame-ancestors 'none'",
+        // 'self' (not 'none') for the same reason as X-Frame-Options above:
+        // allow our own pages to embed our own resources (resume PDF viewer)
+        // while still blocking cross-origin iframe embedding.
+        "frame-ancestors 'self'",
         "base-uri 'self'",
         "form-action 'self'",
       ].join("; "),
