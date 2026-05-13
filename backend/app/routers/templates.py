@@ -3,10 +3,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.db import get_session
+
+log = structlog.get_logger()
 from app.models.job import Job
 from app.models.template import Template, TemplateAssessmentQuestion, TemplateFormField
 from app.schemas.template import (
@@ -218,25 +222,47 @@ def delete_template(
     """
     template = _get_or_404(session, template_id)
 
-    # Null out references from any jobs that have this template applied.
-    # We do this in code rather than via ON DELETE SET NULL at the DB
-    # level so the deploy doesn't need a coordinated schema migration.
-    for job in session.exec(select(Job).where(Job.template_id == template_id)).all():
-        job.template_id = None
-        session.add(job)
+    try:
+        # Null out references from any jobs that have this template applied.
+        # We do this in code rather than via ON DELETE SET NULL at the DB
+        # level so the deploy doesn't need a coordinated schema migration.
+        for job in session.exec(select(Job).where(Job.template_id == template_id)).all():
+            job.template_id = None
+            session.add(job)
 
-    for f in session.exec(
-        select(TemplateFormField).where(TemplateFormField.template_id == template_id)
-    ).all():
-        session.delete(f)
-    for q in session.exec(
-        select(TemplateAssessmentQuestion).where(
-            TemplateAssessmentQuestion.template_id == template_id
-        )
-    ).all():
-        session.delete(q)
-    session.delete(template)
-    session.commit()
+        for f in session.exec(
+            select(TemplateFormField).where(TemplateFormField.template_id == template_id)
+        ).all():
+            session.delete(f)
+        for q in session.exec(
+            select(TemplateAssessmentQuestion).where(
+                TemplateAssessmentQuestion.template_id == template_id
+            )
+        ).all():
+            session.delete(q)
+        session.delete(template)
+        session.commit()
+    except IntegrityError as exc:
+        # The cascade above should handle every known FK reference, but if a
+        # new one is added in the future and someone forgets to update this
+        # handler, return a useful message instead of a bare 500. The admin
+        # sees the specific constraint that failed and can take action.
+        session.rollback()
+        log.exception("template.delete.integrity_error", template_id=str(template_id))
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Cannot delete template — something still references it. "
+            f"Details: {str(exc.orig) if exc.orig else str(exc)}",
+        ) from exc
+    except Exception as exc:
+        # Catch-all so the admin sees something actionable instead of the
+        # default 'Internal Server Error'.
+        session.rollback()
+        log.exception("template.delete.failed", template_id=str(template_id))
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"Couldn't delete template: {type(exc).__name__}: {str(exc)[:200]}",
+        ) from exc
 
 
 @router.post("/{template_id}/duplicate", response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
