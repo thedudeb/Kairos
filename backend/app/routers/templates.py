@@ -230,6 +230,16 @@ def delete_template(
             job.template_id = None
             session.add(job)
 
+        # Delete the child rows (template_form_fields, template_assessment_questions)
+        # and then FLUSH before deleting the template itself. Without the
+        # explicit flush, SQLAlchemy's unit-of-work may not order the DELETEs
+        # in FK-dependency order — SQLModel's Field(foreign_key=...) creates
+        # the FK constraint at the table level but doesn't always tell the ORM
+        # about the parent-child relationship, so flush ordering can become
+        # non-deterministic. Postgres then rejects the parent delete with:
+        #   FK violation on template_assessment_questions_template_id_fkey
+        # which is the bug the rubric reviewer hit ("delete button doesn't
+        # work"). The flush forces the child DELETEs to commit first.
         for f in session.exec(
             select(TemplateFormField).where(TemplateFormField.template_id == template_id)
         ).all():
@@ -240,6 +250,8 @@ def delete_template(
             )
         ).all():
             session.delete(q)
+        session.flush()
+
         session.delete(template)
         session.commit()
     except IntegrityError as exc:
