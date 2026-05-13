@@ -2,18 +2,8 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { auth } from "@/auth";
 import { backendFetch } from "@/lib/api";
-import { duplicateTemplate, deleteTemplate } from "@/app/admin/actions";
 import type { TemplateSummary } from "@/types/api";
-
-async function doDuplicate(id: string) {
-  "use server";
-  await duplicateTemplate(id);
-}
-
-async function doDelete(id: string) {
-  "use server";
-  await deleteTemplate(id);
-}
+import { TemplateRowActions } from "./template-row-actions";
 
 export default async function TemplateLibraryPage() {
   const session = await auth();
@@ -91,24 +81,7 @@ export default async function TemplateLibraryPage() {
                   {isAdmin ? "Edit" : "View"}
                 </Link>
                 {isAdmin && (
-                  <>
-                    <form action={doDuplicate.bind(null, t.id)}>
-                      <button
-                        type="submit"
-                        className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
-                      >
-                        Duplicate
-                      </button>
-                    </form>
-                    <form action={doDelete.bind(null, t.id)}>
-                      <button
-                        type="submit"
-                        className="rounded-md border border-red-100 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-900 dark:bg-zinc-900 dark:text-red-400"
-                      >
-                        Delete
-                      </button>
-                    </form>
-                  </>
+                  <TemplateRowActions templateId={t.id} templateName={t.name} />
                 )}
               </div>
             </div>
