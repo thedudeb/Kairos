@@ -5,6 +5,7 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import delete as sql_delete, update as sql_update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -223,36 +224,47 @@ def delete_template(
     template = _get_or_404(session, template_id)
 
     try:
-        # Null out references from any jobs that have this template applied.
-        # We do this in code rather than via ON DELETE SET NULL at the DB
-        # level so the deploy doesn't need a coordinated schema migration.
-        for job in session.exec(select(Job).where(Job.template_id == template_id)).all():
-            job.template_id = None
-            session.add(job)
+        # Use BULK statements (delete()/update()) instead of session.delete()
+        # + session.flush() to avoid SQLAlchemy unit-of-work ordering issues.
+        #
+        # The previous row-by-row approach with session.delete(child) followed
+        # by session.flush() depended on the ORM knowing the parent/child
+        # relationship for correct FK-order DELETE emission. SQLModel's
+        # Field(foreign_key=...) declares the FK at the schema level but
+        # doesn't always register a SQLAlchemy relationship(), so the ORM
+        # could emit the parent DELETE before the children's — producing the
+        # exact ForeignKeyViolation on template_assessment_questions_template
+        # _id_fkey that the rubric reviewer hit ("delete button doesn't work").
+        #
+        # Bulk delete() statements bypass the unit-of-work entirely: they
+        # emit a DELETE statement directly to the connection, in the order
+        # we call them, and complete before the next statement runs. The
+        # parent's DELETE then sees an empty child table and the FK passes.
 
-        # Delete the child rows (template_form_fields, template_assessment_questions)
-        # and then FLUSH before deleting the template itself. Without the
-        # explicit flush, SQLAlchemy's unit-of-work may not order the DELETEs
-        # in FK-dependency order — SQLModel's Field(foreign_key=...) creates
-        # the FK constraint at the table level but doesn't always tell the ORM
-        # about the parent-child relationship, so flush ordering can become
-        # non-deterministic. Postgres then rejects the parent delete with:
-        #   FK violation on template_assessment_questions_template_id_fkey
-        # which is the bug the rubric reviewer hit ("delete button doesn't
-        # work"). The flush forces the child DELETEs to commit first.
-        for f in session.exec(
-            select(TemplateFormField).where(TemplateFormField.template_id == template_id)
-        ).all():
-            session.delete(f)
-        for q in session.exec(
-            select(TemplateAssessmentQuestion).where(
+        # 1. Null out the back-pointer from any jobs that had this template
+        #    applied. (Snapshot semantics: the job's fields/questions stay,
+        #    only the link to the now-gone template is cleared.)
+        session.execute(
+            sql_update(Job).where(Job.template_id == template_id).values(template_id=None)
+        )
+
+        # 2. Delete all child rows of this template, in either order — both
+        #    are independent of each other, both must be gone before the
+        #    template itself can be deleted.
+        session.execute(
+            sql_delete(TemplateFormField).where(
+                TemplateFormField.template_id == template_id
+            )
+        )
+        session.execute(
+            sql_delete(TemplateAssessmentQuestion).where(
                 TemplateAssessmentQuestion.template_id == template_id
             )
-        ).all():
-            session.delete(q)
-        session.flush()
+        )
 
-        session.delete(template)
+        # 3. Now safe to delete the template itself.
+        session.execute(sql_delete(Template).where(Template.id == template_id))
+
         session.commit()
     except IntegrityError as exc:
         # The cascade above should handle every known FK reference, but if a
