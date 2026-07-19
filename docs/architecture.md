@@ -1,5 +1,9 @@
 # Architecture Overview
 
+> **Historical architecture:** The Google Cloud, Gemini, and hosted deployment
+> described below are retired and must not be deployed. The supported runtime
+> is documented in [Local-only architecture](local-only-architecture.md).
+
 ## High-level diagram
 
 ```

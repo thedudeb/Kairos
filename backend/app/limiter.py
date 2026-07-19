@@ -5,8 +5,8 @@ to apply rate limits. Using a single module avoids the circular-import
 problem of importing from main.py, and ensures all decorators share the
 same counter storage.
 
-Redis storage is used so counters are consistent across multiple worker
-processes / Cloud Run instances.
+Redis storage is used so counters are consistent across multiple local worker
+processes.
 """
 from __future__ import annotations
 
@@ -20,11 +20,10 @@ from app.config import settings
 def _get_client_ip(request: Request) -> str:
     """Return the real client IP, honouring X-Forwarded-For when present.
 
-    We take the *last* entry in X-Forwarded-For, not the first. Cloud Load
-    Balancing (and Cloud Run's upstream proxy) *appends* the true client IP,
-    so the rightmost entry is the one the trusted infrastructure added and
-    cannot be spoofed by the client. Taking [0] would let an attacker bypass
-    rate limits by sending a forged X-Forwarded-For header.
+    We take the *last* entry in X-Forwarded-For, not the first. A trusted local
+    reverse proxy appends the client IP, so the rightmost entry is the value it
+    added. Taking [0] would let an attacker bypass rate limits by sending a
+    forged X-Forwarded-For header.
 
     Falls back to the TCP peer address for direct connections (local dev, tests).
     """
