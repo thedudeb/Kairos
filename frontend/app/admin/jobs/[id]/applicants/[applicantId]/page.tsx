@@ -233,10 +233,10 @@ export default async function ApplicantDetailPage({
               {pr && (
                 <div className="space-y-7">
 
-                  {/* Confidence banner — surface AI's "I wasn't sure about X" notes upfront */}
+                  {/* Surface local parser confidence notes up front. */}
                   {pr.confidence_notes && Object.keys(pr.confidence_notes).length > 0 && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/15 dark:text-amber-300">
-                      <p className="mb-1 font-semibold">AI parser flagged {Object.keys(pr.confidence_notes).length} field{Object.keys(pr.confidence_notes).length === 1 ? "" : "s"} with low confidence.</p>
+                      <p className="mb-1 font-semibold">Local parser flagged {Object.keys(pr.confidence_notes).length} field{Object.keys(pr.confidence_notes).length === 1 ? "" : "s"} for review.</p>
                       <ul className="space-y-0.5 pl-4 [list-style-type:disc]">
                         {Object.entries(pr.confidence_notes).map(([k, v]) => (
                           <li key={k}>
@@ -471,7 +471,7 @@ function InfoItem({
       {note && (
         <p
           className="mt-1 inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
-          title="AI parser flagged low confidence on this field"
+          title="Local parser flagged this field for review"
         >
           <span aria-hidden>!</span>
           {note}

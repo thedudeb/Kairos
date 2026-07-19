@@ -648,16 +648,9 @@ def head_resume_pdf(
 
             if not Path(path[len("local://"):]).is_file():
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "resume file missing")
-        elif path.startswith("gs://"):
-            from google.cloud import storage as gcs
-
-            rest = path[5:]
-            bucket_name, blob_path = rest.split("/", 1)
-            client = gcs.Client()
-            blob = client.bucket(bucket_name).blob(blob_path)
-            if not blob.exists():
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "resume file missing")
-        # Unknown scheme falls through to 200 — the GET would surface the error
+        else:
+            # Legacy gs:// and unknown paths are intentionally never contacted.
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "resume is not in local storage")
     except HTTPException:
         raise
     except Exception:
@@ -890,7 +883,7 @@ async def reparse_resume(
     return {"queued": False, "note": "Redis unavailable; set REDIS_URL to enable background parsing"}
 
 
-# ─── Re-rank (AI fit score) ────────────────────────────────────────────────────
+# ─── Re-score (local match) ───────────────────────────────────────────────────
 
 @router.post("/{applicant_id}/rerank", status_code=202)
 async def rerank_applicant(
@@ -1043,7 +1036,7 @@ def correct_parsed_resume(
     )
 
 
-# ─── AI Outreach ───────────────────────────────────────────────────────────────
+# ─── Outreach templates ───────────────────────────────────────────────────────
 
 class OutreachDraftRequest(BaseModel):
     stage_name: str
@@ -1068,7 +1061,7 @@ def draft_outreach(
     session: Session = Depends(get_session),
     current_user: User = Depends(require_admin),
 ) -> OutreachDraftResponse:
-    """Ask Gemini to draft a personalized outreach email for a candidate."""
+    """Build a deterministic local outreach template for a candidate."""
     applicant = _get_applicant_or_404(session, applicant_id, job_id)
     pr = session.get(ParsedResume, applicant_id)
     parsed_resume = pr.raw_json if pr and pr.raw_json else {}
@@ -1085,20 +1078,6 @@ def draft_outreach(
         stage_name=body.stage_name,
         parsed_resume=parsed_resume,
     )
-
-    if result is None:
-        # Gemini unavailable — return a sensible blank-ish template
-        first_name = applicant.first_name or "there"
-        return OutreachDraftResponse(
-            subject=f"Update on your application — {body.job_title}",
-            body=(
-                f"Hi {first_name},\n\n"
-                f"Thank you for your interest in the {body.job_title} position. "
-                f"I'm reaching out to let you know that we'd like to move you forward "
-                f"to the {body.stage_name} stage.\n\n"
-                "Please let me know if you have any questions.\n\nBest regards,"
-            ),
-        )
 
     return OutreachDraftResponse(subject=result["subject"], body=result["body"])
 

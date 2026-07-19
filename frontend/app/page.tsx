@@ -55,7 +55,7 @@ export default async function HomePage() {
             </span>
           </h1>
           <p className="mx-auto max-w-lg text-base leading-relaxed text-zinc-400 sm:text-lg">
-            AI resume parsing, a configurable Kanban pipeline, and job-scoped
+            Local resume parsing, a configurable Kanban pipeline, and job-scoped
             analytics — all in one place.
           </p>
         </div>
@@ -89,7 +89,7 @@ export default async function HomePage() {
 
         {/* Feature pills */}
         <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-          {["AI Resume Parsing", "Kanban Pipeline", "Analytics Dashboard", "Webhook Integrations"].map((f) => (
+          {["Local Resume Parsing", "Kanban Pipeline", "Analytics Dashboard", "Webhook Integrations"].map((f) => (
             <span
               key={f}
               className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-zinc-400 backdrop-blur-sm"

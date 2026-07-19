@@ -68,7 +68,7 @@ app = FastAPI(
     description=(
         "Internal + public API for the recruitment platform. Every product action "
         "(stage transitions, integrations, etc.) is exposed here so the platform "
-        "can be driven entirely by external services or AI agents.\n\n"
+        "can be driven entirely through documented HTTP endpoints.\n\n"
         "**Auth:** Admin endpoints expect `Authorization: Bearer <jwt>` (HS256, signed with `AUTH_SECRET`). "
         "The `/internal/*` endpoints require `X-Internal-API-Key`. The `/public/*` endpoints are unauthenticated."
     ),

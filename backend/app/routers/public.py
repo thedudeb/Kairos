@@ -430,10 +430,7 @@ def _try_enqueue_parse(request: Request, applicant_id: str) -> None:
 
 @router.get("/files/{filename}")
 def serve_local_file(filename: str) -> FileResponse:
-    """Serve files saved to /tmp/recruitment-uploads in local dev mode only.
-
-    This endpoint is disabled in production — GCS signed URLs are used instead.
-    """
+    """Serve files from LOCAL_UPLOAD_DIR in local development only."""
     if settings.environment == "production":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
 

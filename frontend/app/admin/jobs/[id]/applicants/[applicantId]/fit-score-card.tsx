@@ -53,7 +53,7 @@ export function FitScoreCard({ jobId, applicantId, fit, isAdmin }: FitScoreCardP
     startTransition(async () => {
       setPolling(true);
       await rerankApplicant(jobId, applicantId);
-      // Refresh after a beat — Gemini call typically takes 2-4s
+      // Refresh after a beat so the background worker can persist the score.
       setTimeout(() => {
         router.refresh();
         setPolling(false);
@@ -70,7 +70,7 @@ export function FitScoreCard({ jobId, applicantId, fit, isAdmin }: FitScoreCardP
       <div className="mb-3 flex items-center justify-between">
         <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
           <Sparkles className="h-3.5 w-3.5" />
-          AI fit score
+          Local match score
         </h2>
         {isAdmin && (
           <button
@@ -92,7 +92,7 @@ export function FitScoreCard({ jobId, applicantId, fit, isAdmin }: FitScoreCardP
         </div>
       ) : status === "skipped" ? (
         <p className="py-2 text-xs text-zinc-500 dark:text-zinc-400">
-          {fit?.error || "Not scored — Gemini unavailable or job description missing."}
+          {fit?.error || "Not scored — job description or parsed resume missing."}
         </p>
       ) : status === "failed" ? (
         <p className="py-2 text-xs text-rose-500">

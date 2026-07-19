@@ -29,6 +29,6 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8080
 
-# Default command runs the API; the worker service overrides this with
-# `gcloud run deploy worker --command=arq --args=app.worker.WorkerSettings`
+# Default command runs the local API. Run the worker separately with
+# `arq app.worker.WorkerSettings` when background parsing is desired.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

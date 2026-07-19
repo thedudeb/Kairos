@@ -58,7 +58,7 @@ export function FitScoreBadge({ score, status, size = "sm", className }: FitScor
         sizeCls,
         className,
       )}
-      title={`AI fit score: ${score}/100`}
+      title={`Local match score: ${score}/100`}
     >
       <Sparkles className="h-3 w-3 opacity-70" />
       {score}

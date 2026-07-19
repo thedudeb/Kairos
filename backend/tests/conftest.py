@@ -31,7 +31,6 @@ from app.models.job import Job, JobAssessmentQuestion, JobFormField  # noqa: E40
 from app.models.pipeline import PipelineStage  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.security import issue_session_token  # noqa: E402
-from app.services import storage as storage_svc  # noqa: E402
 
 
 # ─── Core fixtures ────────────────────────────────────────────────────────────
@@ -58,9 +57,7 @@ def session(engine):
 
 @pytest.fixture()
 def client(engine):
-    """TestClient wired to the in-memory DB with GCS disabled."""
-    old_bucket = storage_svc.settings.gcs_bucket
-    storage_svc.settings.gcs_bucket = None  # force local-file fallback
+    """TestClient wired to the in-memory DB and local file storage."""
 
     def _override():
         with Session(engine) as s:
@@ -71,7 +68,6 @@ def client(engine):
         yield c
 
     app.dependency_overrides.clear()
-    storage_svc.settings.gcs_bucket = old_bucket
 
 
 # ─── Auth fixtures ────────────────────────────────────────────────────────────

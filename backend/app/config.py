@@ -31,8 +31,7 @@ class Settings(BaseSettings):
     # The externally-reachable base URL of THIS backend service. Used to build
     # public resume-share links embedded in outbound webhook payloads, since
     # those links have to be fetchable by third-party receivers that don't
-    # have our admin session. In production this is the Cloud Run URL of the
-    # recruitment-api service. In dev it's localhost:8000.
+    # have our admin session. In local development it's localhost:8000.
     public_api_url: str = Field("http://localhost:8000")
 
     # --- Encryption (separate from auth_secret to allow independent rotation) ---
@@ -40,14 +39,10 @@ class Settings(BaseSettings):
     encryption_secret: str | None = None
     resume_share_secret: str | None = None
 
-    # --- Optional (filled in on later days) -------------------------------
-    gcs_bucket: str | None = None
-    google_application_credentials: str | None = None
+    # --- Local services ---------------------------------------------------
+    local_upload_dir: str = "/tmp/recruitment-uploads"
     resend_api_key: str | None = None
     email_from: str = "Recruiting <hello@example.com>"
-    gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.5-pro"
-    gemini_ranking_model: str = "gemini-2.5-flash"
 
     # --- Behavior ---------------------------------------------------------
     jwt_algorithm: str = "HS256"

@@ -164,7 +164,7 @@ export function ResumeEditor({ jobId, applicantId, parsed, readOnly = false }: R
   return (
     <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-900/10">
       <p className="mb-4 text-xs font-semibold text-amber-700 dark:text-amber-400">
-        Manual correction mode — edits override AI-extracted data
+        Manual correction mode — edits override locally extracted data
       </p>
 
       {error && (

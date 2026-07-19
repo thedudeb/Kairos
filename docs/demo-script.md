@@ -1,5 +1,9 @@
 # Kairos — Demo Video Script
 
+> **Historical document:** This script describes the retired Google Cloud and
+> Gemini deployment. It must not be used as current setup guidance. See
+> [Local-only architecture](local-only-architecture.md) for the supported stack.
+
 **Target length:** 13–14 minutes
 **Format:** read directly; bracketed lines are on-screen actions
 

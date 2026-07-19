@@ -28,7 +28,6 @@ from app.models.template import Template, TemplateAssessmentQuestion, TemplateFo
 from app.routers.templates import update_template
 from app.routers.jobs import delete_job
 from app.schemas.template import TemplateFormFieldIn, TemplateUpdate
-from app.services import storage as storage_svc
 from app.services import webhook as webhook_svc
 from app.services.webhook import deliver_with_retry, encrypt_api_key, fire_webhook
 from app.utils.slug import unique_job_slug
@@ -43,11 +42,8 @@ class RegressionTests(unittest.TestCase):
             poolclass=StaticPool,
         )
         SQLModel.metadata.create_all(self.engine)
-        self._old_gcs_bucket = storage_svc.settings.gcs_bucket
-        storage_svc.settings.gcs_bucket = None
 
     def tearDown(self) -> None:
-        storage_svc.settings.gcs_bucket = self._old_gcs_bucket
         app.dependency_overrides.clear()
 
     def _session_override(self):

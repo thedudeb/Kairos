@@ -101,7 +101,7 @@ export function OutreachModal({
           <div className="flex items-center gap-1.5">
             <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
             <span className="text-xs text-zinc-500 dark:text-zinc-400">
-              AI-drafted for stage:{" "}
+              Local template for stage:{" "}
               <span className="font-medium text-zinc-700 dark:text-zinc-300">{stageName}</span>
             </span>
             {isDrafting && (

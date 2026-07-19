@@ -1,5 +1,9 @@
 # Pre-Submission Verification Checklist
 
+> **Historical document:** Cloud deployment and AI checks below belong to the
+> retired submission environment. For current verification, use the local stack
+> documented in [Local-only architecture](local-only-architecture.md).
+
 **Purpose:** Walk through this file in a clean Chrome incognito window against the deployed production URL before any take-home submission, demo, or formal review. Each item maps directly to a rubric line item from the original assessment. Catches what *"oh I'll test it later"* always misses.
 
 **Why this exists:** Original submission scored 7.1/10 with the reviewer's note: *"did not test the app thoroughly before submitting."* This is the testing pass that would have prevented that.

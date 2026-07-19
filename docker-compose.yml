@@ -31,6 +31,43 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/recruitment
+      REDIS_URL: redis://redis:6379/0
+      LOCAL_UPLOAD_DIR: /data/uploads
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8000:8080"
+    volumes:
+      - recruitment_uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/recruitment
+      REDIS_URL: redis://redis:6379/0
+      LOCAL_UPLOAD_DIR: /data/uploads
+    command: ["arq", "app.worker.main.WorkerSettings"]
+    volumes:
+      - recruitment_uploads:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:
+  recruitment_uploads:

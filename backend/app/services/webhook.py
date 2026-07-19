@@ -135,11 +135,8 @@ def _build_payload(
     # against our own public endpoint. Previously this used
     # storage_svc.get_download_url() which either:
     #   - Pointed at the authenticated proxy (third parties can't fetch it)
-    #   - Returned a GCS signed URL (requires the service account to have
-    #     iam.serviceAccountTokenCreator, otherwise silently fell back to
-    #     a `gs://` URL that no external receiver can fetch).
-    # The token-signed public endpoint sidesteps both problems and works
-    # identically whether the resume is in local:// or gs:// storage.
+    # The token-signed public endpoint works with local filesystem storage
+    # without exposing an authenticated admin URL.
     # Rubric #25 ("resume url is not accessible") fixed here.
     if applicant and applicant.resume_gcs_path:
         token = issue_resume_share_token(applicant_id=applicant.id, ttl_minutes=60)

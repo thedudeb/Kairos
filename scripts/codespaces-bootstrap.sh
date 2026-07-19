@@ -108,8 +108,6 @@ Next steps:
   • Open:      http://localhost:3000  (click "Try demo" — no Google OAuth needed)
 
 Optional env vars (graceful-degrade when missing):
-  GEMINI_API_KEY    — resume parsing + AI fit-score
   RESEND_API_KEY    — confirmation emails
-  GCS_BUCKET        — file storage (else local /tmp)
   AUTH_GOOGLE_ID/SECRET — Google sign-in (demo button works without)
 EOF

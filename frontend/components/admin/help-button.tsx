@@ -26,8 +26,8 @@ const STEPS = [
   {
     title: "Resume intelligence",
     description:
-      "Resumes are parsed automatically in the background using Gemini AI — extracting education, work history, and skills.",
-    tip: "Click Re-parse on any applicant's profile to re-run the AI, or use the edit button to correct any field manually.",
+      "Resumes are parsed automatically in the background using deterministic local extraction rules.",
+    tip: "Click Re-parse on any applicant's profile to run local extraction again, or use Edit to correct any field manually.",
   },
   {
     title: "Pipeline & Kanban board",
