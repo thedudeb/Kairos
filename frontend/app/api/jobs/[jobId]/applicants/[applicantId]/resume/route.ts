@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { getBackendToken } from "@/lib/api";
 
 import { BACKEND_URL } from "@/lib/constants";
 
@@ -9,15 +9,15 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string; applicantId: string }> },
 ) {
   const { jobId, applicantId } = await params;
-  const session = await auth();
-  if (!session?.backendToken) {
+  const token = await getBackendToken();
+  if (!token) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
   const upstream = await fetch(
     `${BACKEND_URL}/jobs/${jobId}/applicants/${applicantId}/resume`,
     {
-      headers: { Authorization: `Bearer ${session.backendToken}` },
+      headers: { Authorization: `Bearer ${token}` },
     },
   );
 
@@ -48,8 +48,8 @@ export async function HEAD(
   { params }: { params: Promise<{ jobId: string; applicantId: string }> },
 ) {
   const { jobId, applicantId } = await params;
-  const session = await auth();
-  if (!session?.backendToken) {
+  const token = await getBackendToken();
+  if (!token) {
     return new NextResponse(null, { status: 401 });
   }
 
@@ -57,7 +57,7 @@ export async function HEAD(
     `${BACKEND_URL}/jobs/${jobId}/applicants/${applicantId}/resume`,
     {
       method: "HEAD",
-      headers: { Authorization: `Bearer ${session.backendToken}` },
+      headers: { Authorization: `Bearer ${token}` },
     },
   );
 

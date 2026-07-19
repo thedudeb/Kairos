@@ -1,12 +1,13 @@
 """JWT issuance + verification.
 
-Auth.js (frontend) signs session JWTs with AUTH_SECRET. The frontend BFF forwards
-that JWT as `Authorization: Bearer <jwt>` to the backend. We verify the same
-HS256 signature and trust the claims we put there during the user-sync step.
+The frontend BFF obtains short-lived backend session JWTs through the protected
+user-sync endpoint and forwards them as `Authorization: Bearer <jwt>`. Browser
+session data never contains these portable bearer tokens.
 """
 from __future__ import annotations
 
 import hmac
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -21,6 +22,22 @@ from app.models._base import Role
 from app.models.user import User
 
 ALGO = settings.jwt_algorithm
+
+
+def _purpose_key(explicit_secret: str | None, purpose: bytes) -> str:
+    """Return an independent key for a specific cryptographic purpose.
+
+    Explicit secrets allow independent rotation. The HMAC-derived fallback
+    keeps existing deployments working while preventing one token type from
+    being accepted by another subsystem that shares AUTH_SECRET.
+    """
+    if explicit_secret:
+        return explicit_secret
+    return hmac.new(settings.auth_secret.encode(), purpose, hashlib.sha256).hexdigest()
+
+
+def resume_share_signing_key() -> str:
+    return _purpose_key(settings.resume_share_secret, b"kairos:resume-share:v1")
 
 
 def issue_session_token(*, user_id: UUID, email: str, role: str, ttl_minutes: int = 60 * 24 * 7) -> str:
@@ -44,9 +61,7 @@ def issue_resume_share_token(*, applicant_id: UUID, ttl_minutes: int = 60) -> st
     Used to embed externally-reachable resume URLs in outbound webhook
     payloads (rubric #25). Third-party receivers don't have our admin
     session, so the link can't point at the authenticated proxy. The token
-    is signed with the same AUTH_SECRET as session tokens but carries a
-    distinct `type` claim so a leaked session token can't be reused here
-    and vice versa.
+    is signed with a purpose-specific key and carries a distinct `type` claim.
     """
     now = datetime.now(timezone.utc)
     payload = {
@@ -55,7 +70,7 @@ def issue_resume_share_token(*, applicant_id: UUID, ttl_minutes: int = 60) -> st
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=ttl_minutes)).timestamp()),
     }
-    return jwt.encode(payload, settings.auth_secret, algorithm=ALGO)
+    return jwt.encode(payload, resume_share_signing_key(), algorithm=ALGO)
 
 
 def decode_resume_share_token(token: str) -> UUID:
@@ -63,7 +78,7 @@ def decode_resume_share_token(token: str) -> UUID:
     access to. Raises 401 on any failure (invalid signature, expired, wrong
     type, malformed sub claim) without leaking which one to the caller."""
     try:
-        claims = jwt.decode(token, settings.auth_secret, algorithms=[ALGO])
+        claims = jwt.decode(token, resume_share_signing_key(), algorithms=[ALGO])
     except JWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

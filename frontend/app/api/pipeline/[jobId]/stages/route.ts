@@ -1,6 +1,6 @@
-import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 import { rejectCrossOriginMutation } from "@/lib/request-guards";
+import { getBackendToken } from "@/lib/api";
 
 import { BACKEND_URL } from "@/lib/constants";
 
@@ -8,8 +8,8 @@ async function proxy(req: NextRequest, jobId: string, extra = "") {
   const rejected = rejectCrossOriginMutation(req);
   if (rejected) return rejected;
 
-  const session = await auth();
-  if (!session?.backendToken) return new NextResponse("Unauthorized", { status: 401 });
+  const token = await getBackendToken();
+  if (!token) return new NextResponse("Unauthorized", { status: 401 });
   const url = `${BACKEND_URL}/jobs/${jobId}/pipeline/stages${extra}`;
   const body = req.method !== "GET" && req.method !== "DELETE"
     ? await req.text()
@@ -18,7 +18,7 @@ async function proxy(req: NextRequest, jobId: string, extra = "") {
     method: req.method,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${session.backendToken}`,
+      Authorization: `Bearer ${token}`,
     },
     body,
   });

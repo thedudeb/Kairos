@@ -8,16 +8,14 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",
-      allowedOrigins: [
-        "localhost:3000",
-        "*.app.github.dev",
-      ],
+      // Production uses Next.js's same-origin default. The wildcard is only
+      // needed for ephemeral local-development Codespaces.
+      allowedOrigins: process.env.NODE_ENV === "production"
+        ? []
+        : ["localhost:3000", "*.app.github.dev"],
     },
   },
   async headers() {
-    const scriptSrc = process.env.NODE_ENV === "production"
-      ? "script-src 'self' 'unsafe-inline'"
-      : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
     const securityHeaders: { key: string; value: string }[] = [
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -36,24 +34,6 @@ const nextConfig: NextConfig = {
         value: "max-age=31536000; includeSubDomains; preload",
       });
     }
-
-    securityHeaders.push({
-      key: "Content-Security-Policy",
-      value: [
-        "default-src 'self'",
-        scriptSrc,
-        "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: https:",
-        "font-src 'self'",
-        "connect-src 'self'",
-        // 'self' (not 'none') for the same reason as X-Frame-Options above:
-        // allow our own pages to embed our own resources (resume PDF viewer)
-        // while still blocking cross-origin iframe embedding.
-        "frame-ancestors 'self'",
-        "base-uri 'self'",
-        "form-action 'self'",
-      ].join("; "),
-    });
 
     return [
       // Security headers on every route

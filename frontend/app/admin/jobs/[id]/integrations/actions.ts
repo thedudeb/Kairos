@@ -1,19 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auth } from "@/auth";
+import { getBackendToken } from "@/lib/api";
 
 import { BACKEND_URL } from "@/lib/constants";
 
 async function authedFetch(path: string, init: RequestInit = {}) {
-  const session = await auth();
-  const token = session?.backendToken;
+  const token = await getBackendToken();
+  if (!token) throw new Error("Unauthorized");
   return fetch(`${BACKEND_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
       ...(init.headers as Record<string, string> | undefined),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     },
   });
 }

@@ -43,7 +43,8 @@ if [ ! -f backend/.env ] || [ ! -f frontend/.env.local ]; then
       frontend/.env.local.example > frontend/.env.local
     # Enable the demo login button so reviewers can sign in without Google OAuth.
     echo "" >> frontend/.env.local
-    echo "NEXT_PUBLIC_DEMO_ENABLED=true" >> frontend/.env.local
+    echo "DEMO_ENABLED=true" >> frontend/.env.local
+    echo "DEMO_ENABLED=true" >> backend/.env
   fi
 fi
 

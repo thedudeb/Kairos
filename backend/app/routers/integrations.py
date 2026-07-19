@@ -4,14 +4,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-import httpx
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 from sqlalchemy import case, func, or_
 from sqlmodel import Session, select
 
-from app.utils.url import assert_safe_webhook_url
+from app.utils.url import assert_safe_webhook_url, post_safe_webhook
 
 from app.db import get_session
 from app.models.integration import JobIntegration, WebhookDelivery
@@ -319,9 +318,9 @@ def test_integration(
 
     api_key = decrypt_api_key(integ.api_key_encrypted)
     try:
-        resp = httpx.post(
+        resp = post_safe_webhook(
             integ.endpoint_url,
-            json=sample_payload,
+            payload=sample_payload,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",

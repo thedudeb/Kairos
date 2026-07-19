@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     auth_secret: str = Field(..., min_length=16)
     internal_api_key: str = Field(..., min_length=16)
     initial_admin_email: str = Field(...)
+    demo_enabled: bool = False
     frontend_origin: str = Field("http://localhost:3000")
 
     # The externally-reachable base URL of THIS backend service. Used to build
@@ -37,6 +38,7 @@ class Settings(BaseSettings):
     # --- Encryption (separate from auth_secret to allow independent rotation) ---
     # If not set, falls back to auth_secret for backward compatibility.
     encryption_secret: str | None = None
+    resume_share_secret: str | None = None
 
     # --- Optional (filled in on later days) -------------------------------
     gcs_bucket: str | None = None

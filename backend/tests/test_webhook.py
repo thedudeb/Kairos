@@ -17,7 +17,7 @@ from app.models.pipeline import PipelineStage, StageTransition
 from app.models.applicant import Applicant
 from app.services import webhook as webhook_svc
 from app.services.webhook import encrypt_api_key, fire_webhook
-from app.utils.url import assert_safe_webhook_url
+from app.utils.url import assert_safe_webhook_url, post_safe_webhook
 from tests.conftest import make_applicant, make_job
 
 
@@ -27,13 +27,10 @@ from tests.conftest import make_applicant, make_job
 def webhook_engine(engine, monkeypatch):
     """Point the webhook service at the test engine for the duration of the test.
 
-    Also bypasses live DNS resolution: the SSRF check is unit-tested directly
-    below (test_production_rejects_*), so delivery tests should not depend on
-    external network availability.
+    Outbound delivery itself is mocked in each test.
     """
     original = webhook_svc.engine
     webhook_svc.engine = engine
-    monkeypatch.setattr("app.services.webhook.assert_safe_webhook_url", lambda url: None)
     yield engine
     webhook_svc.engine = original
 
@@ -107,7 +104,7 @@ def test_fire_webhook_idempotency_sends_once(session, webhook_engine):
     transition_id, integration_id = _seed_webhook_scenario(session)
     mock_resp = Mock(status_code=200, text="ok")
 
-    with patch("app.services.webhook.httpx.post", return_value=mock_resp) as mock_post:
+    with patch("app.services.webhook.post_safe_webhook", return_value=mock_resp) as mock_post:
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
 
@@ -119,7 +116,7 @@ def test_fire_webhook_different_attempt_numbers_both_sent(session, webhook_engin
     transition_id, integration_id = _seed_webhook_scenario(session)
     mock_resp = Mock(status_code=200, text="ok")
 
-    with patch("app.services.webhook.httpx.post", return_value=mock_resp) as mock_post:
+    with patch("app.services.webhook.post_safe_webhook", return_value=mock_resp) as mock_post:
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=2)
 
@@ -130,7 +127,7 @@ def test_delivery_row_created_in_db(session, webhook_engine):
     transition_id, integration_id = _seed_webhook_scenario(session)
     mock_resp = Mock(status_code=200, text="ok")
 
-    with patch("app.services.webhook.httpx.post", return_value=mock_resp):
+    with patch("app.services.webhook.post_safe_webhook", return_value=mock_resp):
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
 
     deliveries = session.exec(
@@ -146,11 +143,11 @@ def test_webhook_payload_contains_required_top_level_keys(session, webhook_engin
     transition_id, integration_id = _seed_webhook_scenario(session)
     captured = {}
 
-    def _capture(url, json, **kwargs):
-        captured.update(json)
+    def _capture(url, payload, **kwargs):
+        captured.update(payload)
         return Mock(status_code=200, text="ok")
 
-    with patch("app.services.webhook.httpx.post", side_effect=_capture):
+    with patch("app.services.webhook.post_safe_webhook", side_effect=_capture):
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
 
     assert "event" in captured
@@ -164,7 +161,7 @@ def test_webhook_payload_event_is_stage_transition(session, webhook_engine):
     transition_id, integration_id = _seed_webhook_scenario(session)
     captured = {}
 
-    with patch("app.services.webhook.httpx.post", side_effect=lambda url, json, **kw: (captured.update(json), Mock(status_code=200, text="ok"))[1]):
+    with patch("app.services.webhook.post_safe_webhook", side_effect=lambda url, payload, **kw: (captured.update(payload), Mock(status_code=200, text="ok"))[1]):
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
 
     assert captured["event"] == "stage_transition"
@@ -174,7 +171,7 @@ def test_webhook_payload_candidate_fields(session, webhook_engine):
     transition_id, integration_id = _seed_webhook_scenario(session)
     captured = {}
 
-    with patch("app.services.webhook.httpx.post", side_effect=lambda url, json, **kw: (captured.update(json), Mock(status_code=200, text="ok"))[1]):
+    with patch("app.services.webhook.post_safe_webhook", side_effect=lambda url, payload, **kw: (captured.update(payload), Mock(status_code=200, text="ok"))[1]):
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
 
     candidate = captured["candidate"]
@@ -189,7 +186,7 @@ def test_webhook_payload_excludes_assessment_when_disabled(session, webhook_engi
     transition_id, integration_id = _seed_webhook_scenario(session, include_assessment=False)
     captured = {}
 
-    with patch("app.services.webhook.httpx.post", side_effect=lambda url, json, **kw: (captured.update(json), Mock(status_code=200, text="ok"))[1]):
+    with patch("app.services.webhook.post_safe_webhook", side_effect=lambda url, payload, **kw: (captured.update(payload), Mock(status_code=200, text="ok"))[1]):
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
 
     assert "assessment" not in captured
@@ -200,7 +197,7 @@ def test_webhook_payload_includes_assessment_when_enabled(session, webhook_engin
     transition_id, integration_id = _seed_webhook_scenario(session, include_assessment=True)
     captured = {}
 
-    with patch("app.services.webhook.httpx.post", side_effect=lambda url, json, **kw: (captured.update(json), Mock(status_code=200, text="ok"))[1]):
+    with patch("app.services.webhook.post_safe_webhook", side_effect=lambda url, payload, **kw: (captured.update(payload), Mock(status_code=200, text="ok"))[1]):
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
 
     assert "assessment" in captured
@@ -217,12 +214,12 @@ def test_webhook_request_includes_authorization_header(session, webhook_engine):
     transition_id, integration_id = _seed_webhook_scenario(session)
     captured_headers = {}
 
-    def _capture(url, json, headers=None, **kwargs):
+    def _capture(url, payload, headers=None, **kwargs):
         if headers:
             captured_headers.update(headers)
         return Mock(status_code=200, text="ok")
 
-    with patch("app.services.webhook.httpx.post", side_effect=_capture):
+    with patch("app.services.webhook.post_safe_webhook", side_effect=_capture):
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
 
     assert "Authorization" in captured_headers
@@ -233,12 +230,12 @@ def test_webhook_request_includes_transition_id_header(session, webhook_engine):
     transition_id, integration_id = _seed_webhook_scenario(session)
     captured_headers = {}
 
-    def _capture(url, json, headers=None, **kwargs):
+    def _capture(url, payload, headers=None, **kwargs):
         if headers:
             captured_headers.update(headers)
         return Mock(status_code=200, text="ok")
 
-    with patch("app.services.webhook.httpx.post", side_effect=_capture):
+    with patch("app.services.webhook.post_safe_webhook", side_effect=_capture):
         fire_webhook(transition_id=transition_id, integration_id=integration_id, attempt_number=1)
 
     assert "X-Transition-ID" in captured_headers
@@ -251,7 +248,7 @@ def test_permanent_4xx_failure_not_transient(session, webhook_engine):
     transition_id, integration_id = _seed_webhook_scenario(session)
     mock_resp = Mock(status_code=400, text="bad request")
 
-    with patch("app.services.webhook.httpx.post", return_value=mock_resp):
+    with patch("app.services.webhook.post_safe_webhook", return_value=mock_resp):
         success, is_transient = fire_webhook(
             transition_id=transition_id, integration_id=integration_id, attempt_number=1
         )
@@ -264,7 +261,7 @@ def test_5xx_failure_is_transient(session, webhook_engine):
     transition_id, integration_id = _seed_webhook_scenario(session)
     mock_resp = Mock(status_code=503, text="service unavailable")
 
-    with patch("app.services.webhook.httpx.post", return_value=mock_resp):
+    with patch("app.services.webhook.post_safe_webhook", return_value=mock_resp):
         success, is_transient = fire_webhook(
             transition_id=transition_id, integration_id=integration_id, attempt_number=1
         )
@@ -277,7 +274,7 @@ def test_rate_limited_429_is_transient(session, webhook_engine):
     transition_id, integration_id = _seed_webhook_scenario(session)
     mock_resp = Mock(status_code=429, text="too many requests")
 
-    with patch("app.services.webhook.httpx.post", return_value=mock_resp):
+    with patch("app.services.webhook.post_safe_webhook", return_value=mock_resp):
         _, is_transient = fire_webhook(
             transition_id=transition_id, integration_id=integration_id, attempt_number=1
         )
@@ -289,7 +286,7 @@ def test_successful_delivery_returns_true(session, webhook_engine):
     transition_id, integration_id = _seed_webhook_scenario(session)
     mock_resp = Mock(status_code=200, text="ok")
 
-    with patch("app.services.webhook.httpx.post", return_value=mock_resp):
+    with patch("app.services.webhook.post_safe_webhook", return_value=mock_resp):
         success, _ = fire_webhook(
             transition_id=transition_id, integration_id=integration_id, attempt_number=1
         )
@@ -327,3 +324,32 @@ def test_production_rejects_localhost():
             assert_safe_webhook_url("https://localhost/hook")
     finally:
         webhook_svc.settings.environment = original
+
+
+def test_safe_sender_connects_to_the_validated_ip():
+    from pydantic import HttpUrl
+
+    response = Mock(
+        status=200,
+        read=Mock(return_value=b"ok"),
+        headers=Mock(get_content_charset=Mock(return_value=None)),
+    )
+    connection = Mock()
+    connection.getresponse.return_value = response
+
+    with (
+        patch(
+            "app.utils.url._resolve_safe_webhook_url",
+            return_value=(HttpUrl("http://webhook.example/hook"), ["93.184.216.34"]),
+        ),
+        patch("app.utils.url.http.client.HTTPConnection", return_value=connection) as factory,
+    ):
+        result = post_safe_webhook(
+            "http://webhook.example/hook",
+            payload={"event": "test"},
+            headers={},
+            timeout=10,
+        )
+
+    factory.assert_called_once_with("93.184.216.34", port=80, timeout=10)
+    assert result.status_code == 200

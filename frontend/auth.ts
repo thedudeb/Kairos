@@ -2,50 +2,24 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 
-import { BACKEND_URL } from "@/lib/constants";
+import { syncBackendIdentity } from "@/lib/backend-auth";
+
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY ?? "";
-
-// How many ms before expiry to proactively refresh the backend token (1 day).
-const REFRESH_BUFFER_MS = 24 * 60 * 60 * 1000;
-
-async function syncWithBackend(email: string, name?: string | null, imageUrl?: string | null) {
-  const res = await fetch(`${BACKEND_URL}/internal/auth/sync`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Internal-API-Key": INTERNAL_API_KEY,
-    },
-    body: JSON.stringify({ email, name, image_url: imageUrl }),
-  });
-  if (!res.ok) return null;
-  return res.json() as Promise<{
-    user: { id: string; email: string; name: string | null; role: "admin" | "reviewer" };
-    session_token: string;
-  }>;
-}
-
-console.log("[auth] ENV CHECK", {
-  hasGoogleId: !!process.env.AUTH_GOOGLE_ID,
-  googleIdLength: process.env.AUTH_GOOGLE_ID?.length,
-  hasGoogleSecret: !!process.env.AUTH_GOOGLE_SECRET,
-  hasSecret: !!process.env.AUTH_SECRET,
-  authUrl: process.env.AUTH_URL,
-  trustHost: process.env.AUTH_TRUST_HOST,
-});
+const DEMO_ENABLED = process.env.DEMO_ENABLED === "true";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  trustHost: true,
+  trustHost: process.env.AUTH_TRUST_HOST === "true" || process.env.VERCEL === "1",
   providers: [
     Google({
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
     }),
-    Credentials({
+    ...(DEMO_ENABLED ? [Credentials({
       name: "Demo",
       credentials: {},
       async authorize() {
         try {
-          const data = await syncWithBackend("demo@kairos.app", "Demo User", null);
+          const data = await syncBackendIdentity("demo@kairos.app", "Demo User", null);
           if (!data) return null;
           return {
             id: data.user.id,
@@ -53,14 +27,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             name: data.user.name ?? "Demo User",
             backendId: data.user.id,
             role: data.user.role,
-            backendToken: data.session_token,
           };
         } catch (err) {
           console.error("[auth] syncWithBackend threw during demo authorize:", err);
           return null;
         }
       },
-    }),
+    })] : []),
   ],
   session: { strategy: "jwt" },
   pages: {
@@ -79,14 +52,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
 
       try {
-        const data = await syncWithBackend(user.email, user.name, user.image);
+        const data = await syncBackendIdentity(user.email, user.name, user.image);
         if (!data) {
           console.error("[auth] user-sync failed during sign-in");
           return false;
         }
         user.backendId = data.user.id;
         user.role = data.user.role;
-        user.backendToken = data.session_token;
         return true;
       } catch (err) {
         console.error("[auth] syncWithBackend threw during sign-in:", err);
@@ -95,34 +67,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
 
     async jwt({ token, user }) {
-      // Fresh sign-in — store token and its expiry.
+      // Store only non-secret identity metadata in the browser session JWT.
       if (user) {
         token.backendId = user.backendId;
         token.role = user.role;
-        token.backendToken = user.backendToken;
-        // Backend issues 7-day tokens; record when this one expires.
-        token.backendTokenExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
         return token;
       }
-
-      // Subsequent requests — refresh the backend token if it's within the
-      // buffer window or already expired, so users never hit a silent 401.
-      const expiresAt = token.backendTokenExpiresAt as number | undefined;
-      if (expiresAt && Date.now() > expiresAt - REFRESH_BUFFER_MS) {
-        const email = token.email as string | undefined;
-        if (email && INTERNAL_API_KEY) {
-          try {
-            const data = await syncWithBackend(email, token.name as string, token.picture as string);
-            if (data) {
-              token.backendToken = data.session_token;
-              token.backendTokenExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
-            }
-          } catch {
-            // Keep existing token; it may still have time left.
-          }
-        }
-      }
-
       return token;
     },
 
@@ -130,9 +80,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (typeof token.backendId === "string") session.user.id = token.backendId;
       if (typeof token.role === "string") {
         session.user.role = token.role as "admin" | "reviewer";
-      }
-      if (typeof token.backendToken === "string") {
-        session.backendToken = token.backendToken;
       }
       return session;
     },

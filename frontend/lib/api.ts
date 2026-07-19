@@ -6,6 +6,7 @@
  *   const me = await backendFetch<MeResponse>("/me");
  */
 import { auth } from "@/auth";
+import { syncBackendIdentity } from "@/lib/backend-auth";
 
 import { BACKEND_URL } from "@/lib/constants";
 
@@ -13,6 +14,17 @@ export class BackendError extends Error {
   constructor(public status: number, public body: string) {
     super(`backend ${status}: ${body}`);
   }
+}
+
+export async function getBackendToken(): Promise<string | null> {
+  const session = await auth();
+  if (!session?.user?.email) return null;
+  const identity = await syncBackendIdentity(
+    session.user.email,
+    session.user.name,
+    session.user.image,
+  );
+  return identity?.session_token ?? null;
 }
 
 type FetchOptions = Omit<RequestInit, "headers"> & {
@@ -31,11 +43,11 @@ export async function backendFetch<T>(
   };
 
   if (!options.unauthenticated) {
-    const session = await auth();
-    if (!session?.backendToken) {
+    const token = await getBackendToken();
+    if (!token) {
       throw new BackendError(401, "no session token");
     }
-    headers["Authorization"] = `Bearer ${session.backendToken}`;
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
   const res = await fetch(`${BACKEND_URL}${path}`, {

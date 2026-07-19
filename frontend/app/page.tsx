@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const session = await auth();
+  const demoEnabled = process.env.DEMO_ENABLED === "true";
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#0a0a0f] px-6 text-center">
@@ -73,12 +74,16 @@ export default async function HomePage() {
         ) : (
           <div className="flex w-full max-w-xs flex-col gap-3">
             <SignInButton callbackUrl="/admin" />
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-white/10" />
-              <span className="text-xs text-zinc-600">or</span>
-              <div className="h-px flex-1 bg-white/10" />
-            </div>
-            <DemoButton callbackUrl="/admin" />
+            {demoEnabled && (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-white/10" />
+                  <span className="text-xs text-zinc-600">or</span>
+                  <div className="h-px flex-1 bg-white/10" />
+                </div>
+                <DemoButton callbackUrl="/admin" />
+              </>
+            )}
           </div>
         )}
 

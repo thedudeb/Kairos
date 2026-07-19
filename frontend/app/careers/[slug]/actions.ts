@@ -4,7 +4,6 @@ import { BACKEND_URL } from "@/lib/constants";
 
 export interface SubmitResult {
   ok: true;
-  applicantId: string;
   message: string;
 }
 
@@ -32,7 +31,6 @@ export async function submitApplication(
       const data = await res.json();
       return {
         ok: true,
-        applicantId: data.id,
         message: data.message,
       };
     }

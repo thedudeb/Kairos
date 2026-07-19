@@ -1,7 +1,7 @@
 """Server-to-server endpoint called by Auth.js after a successful sign-in.
 
 Handles env-var bootstrap (`INITIAL_ADMIN_EMAIL`), pending `UserInvite` rows,
-and first-user demo access.
+and explicitly enabled demo access.
 """
 from __future__ import annotations
 
@@ -43,12 +43,11 @@ def sync_user(
             session.delete(invite)
             session.flush()
         else:
-            is_first_user = session.exec(select(func.count()).select_from(User)).one() == 0
             is_bootstrap_admin = em == settings.initial_admin_email.lower()
             # Demo account always gets admin so reviewers can explore the full
             # dashboard without Google OAuth credentials.
-            is_demo = em == "demo@kairos.app"
-            if is_bootstrap_admin or is_first_user or is_demo:
+            is_demo = settings.demo_enabled and em == "demo@kairos.app"
+            if is_bootstrap_admin or is_demo:
                 role = Role.admin
             else:
                 # No invite, not the bootstrap admin, not the first user, not

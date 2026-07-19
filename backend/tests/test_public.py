@@ -120,12 +120,11 @@ def test_submit_application_returns_201(client, session):
     assert resp.status_code == 201
 
 
-def test_submit_application_returns_applicant_id(client, session):
-    make_job(session, slug="returns-id", status=JobStatus.active)
-    resp = _apply(client, "returns-id", ip="1.0.0.2")
+def test_submit_application_does_not_expose_applicant_id(client, session):
+    make_job(session, slug="no-public-id", status=JobStatus.active)
+    resp = _apply(client, "no-public-id", ip="1.0.0.2")
     data = resp.json()
-    assert "id" in data
-    assert data["id"]  # non-empty UUID string
+    assert "id" not in data
 
 
 def test_submit_application_creates_db_row(client, session):
@@ -180,13 +179,14 @@ def test_apply_to_nonexistent_job_returns_404(client, session):
 
 # ─── POST /public/jobs/{slug}/apply — duplicate email ────────────────────────
 
-def test_duplicate_email_returns_409(client, session):
+def test_duplicate_email_returns_same_generic_response(client, session):
     job, stages = make_job(session, slug="dup-email", status=JobStatus.active)
     # Seed an existing applicant with the same email
     make_applicant(session, job, stages[0], email="alice@example.com")
 
     resp = _apply(client, "dup-email", ip="1.0.2.1")
-    assert resp.status_code == 409
+    assert resp.status_code == 201
+    assert "id" not in resp.json()
 
 
 def test_duplicate_email_is_case_insensitive(client, session):
@@ -206,7 +206,7 @@ def test_duplicate_email_is_case_insensitive(client, session):
         files=files,
         headers={"X-Forwarded-For": "1.0.2.2"},
     )
-    assert resp.status_code == 409
+    assert resp.status_code == 201
 
 
 def test_same_email_allowed_for_different_job(client, session):

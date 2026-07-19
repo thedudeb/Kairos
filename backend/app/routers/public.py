@@ -180,10 +180,10 @@ async def submit_application(
     ).scalar_one()
 
     if existing:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "An application with this email already exists for this position.",
-        )
+        # Return the same status and body as a new submission. Revealing that an
+        # address already applied lets unauthenticated callers enumerate a
+        # person's application activity.
+        return ApplicantSubmissionResponse()
 
     # ── Resume validation ─────────────────────────────────────────────────────
     resume_bytes = await resume.read()
@@ -399,7 +399,7 @@ async def submit_application(
         email_hash=hashlib.sha256(applicant.email.encode()).hexdigest()[:16],
     )
 
-    return ApplicantSubmissionResponse(id=applicant.id)
+    return ApplicantSubmissionResponse()
 
 
 def _try_enqueue_parse(request: Request, applicant_id: str) -> None:

@@ -4,8 +4,8 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { Loader2 } from "lucide-react";
 
-// Only rendered when NEXT_PUBLIC_DEMO_ENABLED=true is set in the environment.
-// This prevents the demo bypass from being visible in production deployments.
+// The server renders this only when DEMO_ENABLED=true. The credentials provider
+// and backend demo identity are independently gated by the same server-only flag.
 export function DemoButton({ callbackUrl }: { callbackUrl: string }) {
   const [loading, setLoading] = useState(false);
 

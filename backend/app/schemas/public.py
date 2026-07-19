@@ -39,5 +39,4 @@ class PublicJobListItem(BaseModel):
 
 
 class ApplicantSubmissionResponse(BaseModel):
-    id: UUID
     message: str = "Application received. You'll get a confirmation email shortly."

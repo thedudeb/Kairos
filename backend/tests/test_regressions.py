@@ -196,7 +196,7 @@ class RegressionTests(unittest.TestCase):
                 integration_id = integration.id
 
             response = Mock(status_code=200, text="ok")
-            with patch("app.services.webhook.httpx.post", return_value=response) as post:
+            with patch("app.services.webhook.post_safe_webhook", return_value=response) as post:
                 # fire_webhook is the sync delivery primitive; calling it twice
                 # with the same (transition, integration, attempt_number) must
                 # result in only one outbound HTTP POST due to the DB unique

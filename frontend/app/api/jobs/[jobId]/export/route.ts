@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+import { getBackendToken } from "@/lib/api";
 
 import { BACKEND_URL } from "@/lib/constants";
 
@@ -8,14 +8,14 @@ export async function GET(
   { params }: { params: Promise<{ jobId: string }> },
 ) {
   const { jobId } = await params;
-  const session = await auth();
-  if (!session?.backendToken) {
+  const token = await getBackendToken();
+  if (!token) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
   const upstream = await fetch(
     `${BACKEND_URL}/jobs/${jobId}/export/applicants.csv`,
-    { headers: { Authorization: `Bearer ${session.backendToken}` } },
+    { headers: { Authorization: `Bearer ${token}` } },
   );
 
   if (!upstream.ok) {

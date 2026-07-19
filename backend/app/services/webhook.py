@@ -20,12 +20,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import hmac
+import http.client
+import socket
 import traceback
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-import httpx
 import structlog
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -33,7 +35,7 @@ from sqlmodel import Session, select
 from app.config import settings
 from app.db import engine
 from app.models.applicant import Applicant
-from app.utils.url import assert_safe_webhook_url
+from app.utils.url import post_safe_webhook
 from app.models.integration import JobIntegration, WebhookDelivery
 from app.models.job import Job, JobAssessmentQuestion
 from app.models.pipeline import PipelineStage, StageTransition
@@ -48,7 +50,7 @@ _WEBHOOK_TIMEOUT = 10  # seconds
 
 # ─── API key encryption ────────────────────────────────────────────────────────
 
-def _fernet():
+def _fernet(*, legacy: bool = False):
     from cryptography.fernet import Fernet
 
     # Use a dedicated ENCRYPTION_SECRET when available so it can be rotated
@@ -56,11 +58,22 @@ def _fernet():
     if not settings.encryption_secret:
         log.warning(
             "webhook.encryption_secret_missing",
-            note="Set ENCRYPTION_SECRET env var; currently falling back to AUTH_SECRET. "
+            note="Set ENCRYPTION_SECRET env var; currently deriving a key from AUTH_SECRET. "
                  "Rotating AUTH_SECRET will break decryption of stored webhook API keys.",
         )
-    secret = settings.encryption_secret or settings.auth_secret
-    key = hashlib.sha256(secret.encode()).digest()
+    secret = settings.encryption_secret
+    if secret:
+        key = hashlib.sha256(secret.encode()).digest()
+    elif legacy:
+        key = hashlib.sha256(settings.auth_secret.encode()).digest()
+    else:
+        # Domain-separate the fallback from JWT signing. This retains backwards
+        # compatibility without using the raw authentication key for Fernet.
+        key = hmac.new(
+            settings.auth_secret.encode(),
+            b"kairos:webhook-encryption:v1",
+            hashlib.sha256,
+        ).digest()
     return Fernet(base64.urlsafe_b64encode(key))
 
 
@@ -77,12 +90,19 @@ def decrypt_api_key(encrypted: str) -> str:
     """
     try:
         return _fernet().decrypt(encrypted.encode()).decode()
-    except Exception as exc:
+    except Exception as first_exc:
+        # Transparently read ciphertext created before domain separation. The
+        # next integration save encrypts it under the new purpose-specific key.
+        if not settings.encryption_secret:
+            try:
+                return _fernet(legacy=True).decrypt(encrypted.encode()).decode()
+            except Exception:
+                pass
         log.error(
             "webhook.api_key_decrypt_failed",
             note="ENCRYPTION_SECRET may have changed. Re-save the integration API key to fix.",
         )
-        raise ValueError("Failed to decrypt webhook API key") from exc
+        raise ValueError("Failed to decrypt webhook API key") from first_exc
 
 
 def mask_api_key(encrypted: str) -> str:
@@ -263,19 +283,6 @@ def fire_webhook(
                 session.rollback()
             return False, False  # permanent failure, don't retry
 
-        # Re-validate URL at delivery time to prevent DNS-rebinding attacks
-        # (the URL was checked at creation time, but DNS may have changed).
-        try:
-            assert_safe_webhook_url(integration.endpoint_url)
-        except ValueError as exc:
-            log.warning(
-                "webhook.ssrf_blocked",
-                integration_id=str(integration_id),
-                url=integration.endpoint_url,
-                reason=str(exc),
-            )
-            return False, False  # SSRF block is permanent
-
         delivery = WebhookDelivery(
             transition_id=transition_id,
             integration_id=integration_id,
@@ -300,9 +307,9 @@ def fire_webhook(
         success = False
         is_transient = False
         try:
-            resp = httpx.post(
+            resp = post_safe_webhook(
                 integration.endpoint_url,
-                json=payload,
+                payload=payload,
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
@@ -320,7 +327,15 @@ def fire_webhook(
                 status=resp.status_code,
                 attempt=attempt_number,
             )
-        except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError) as exc:
+        except ValueError as exc:
+            delivery.error = f"Unsafe webhook URL: {exc}"
+            log.warning(
+                "webhook.ssrf_blocked",
+                integration_id=str(integration_id),
+                url=integration.endpoint_url,
+                reason=str(exc),
+            )
+        except (TimeoutError, socket.timeout, OSError, http.client.HTTPException) as exc:
             # Transport-layer failures are always retryable
             delivery.error = traceback.format_exc()[-1900:]
             is_transient = True

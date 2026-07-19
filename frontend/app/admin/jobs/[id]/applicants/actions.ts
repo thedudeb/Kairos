@@ -1,13 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auth } from "@/auth";
+import { getBackendToken } from "@/lib/api";
 
 import { BACKEND_URL } from "@/lib/constants";
 
 async function authedFetch(path: string, init: RequestInit = {}) {
-  const session = await auth();
-  const token = session?.backendToken;
+  const token = await getBackendToken();
   // Fail fast if there's no session — prevents silently making unauthenticated
   // requests to the backend which would just return 401 anyway.
   if (!token) throw new Error("Unauthorized");
